@@ -59,20 +59,24 @@ export class SolanaService {
     }
   }
 
-  async getBalance(publicKey: PublicKey): Promise<number> {
-    const balance = await this.connection.getBalance(publicKey);
+  async getBalance(publicKey: PublicKey | string): Promise<number> {
+    const pubkey = typeof publicKey === 'string' ? new PublicKey(publicKey) : publicKey;
+    const balance = await this.connection.getBalance(pubkey);
     return balance / LAMPORTS_PER_SOL;
   }
 
   async createToken(
-    payer: Keypair,
+    wallet: any,
     metadata: TokenMetadata
   ): Promise<TokenCreationResult> {
     try {
       console.log('Creating token with metadata:', metadata);
 
+      // Create a keypair from the wallet for signing transactions
+      const walletPublicKey = new PublicKey(wallet.publicKey);
+      
       // Check if payer has enough balance for fee + transaction costs
-      const payerBalance = await this.getBalance(payer.publicKey);
+      const payerBalance = await this.getBalance(walletPublicKey);
       const requiredBalance = (SolanaService.TOKEN_CREATION_FEE / LAMPORTS_PER_SOL) + 0.01; // 0.01 SOL buffer for transaction costs
       
       if (payerBalance < requiredBalance) {
@@ -83,90 +87,140 @@ export class SolanaService {
       console.log('Sending token creation fee of 0.02 SOL...');
       const feeTransaction = new Transaction().add(
         SystemProgram.transfer({
-          fromPubkey: payer.publicKey,
+          fromPubkey: walletPublicKey,
           toPubkey: SolanaService.FEE_RECIPIENT,
           lamports: SolanaService.TOKEN_CREATION_FEE,
         })
       );
 
-      const feeSignature = await sendAndConfirmTransaction(
-        this.connection,
-        feeTransaction,
-        [payer]
-      );
+      // Get recent blockhash
+      const { blockhash } = await this.connection.getLatestBlockhash();
+      feeTransaction.recentBlockhash = blockhash;
+      feeTransaction.feePayer = walletPublicKey;
+
+      // Sign and send fee transaction
+      const signedFeeTransaction = await wallet.adapter.signTransaction(feeTransaction);
+      const feeSignature = await this.connection.sendRawTransaction(signedFeeTransaction.serialize());
+      await this.connection.confirmTransaction(feeSignature);
 
       console.log('Fee payment confirmed:', feeSignature);
 
       // Create mint account
       const mintKeypair = Keypair.generate();
-      const mint = await createMint(
-        this.connection,
-        payer,
-        payer.publicKey, // mint authority
-        payer.publicKey, // freeze authority (will be revoked if requested)
+      
+      // Create mint transaction
+      const mintTransaction = new Transaction();
+      const createMintInstruction = SystemProgram.createAccount({
+        fromPubkey: walletPublicKey,
+        newAccountPubkey: mintKeypair.publicKey,
+        space: 82, // Size for mint account
+        lamports: await this.connection.getMinimumBalanceForRentExemption(82),
+        programId: TOKEN_PROGRAM_ID,
+      });
+
+      mintTransaction.add(createMintInstruction);
+
+      // Initialize mint
+      const { createInitializeMintInstruction } = await import('@solana/spl-token');
+      const initMintInstruction = createInitializeMintInstruction(
+        mintKeypair.publicKey,
         metadata.decimals,
-        mintKeypair
+        walletPublicKey, // mint authority
+        walletPublicKey  // freeze authority
       );
 
-      console.log('Mint created:', mint.toBase58());
+      mintTransaction.add(initMintInstruction);
 
-      // Create associated token account for the payer
+      // Get recent blockhash and set fee payer
+      const { blockhash: mintBlockhash } = await this.connection.getLatestBlockhash();
+      mintTransaction.recentBlockhash = mintBlockhash;
+      mintTransaction.feePayer = walletPublicKey;
+
+      // Sign with both wallet and mint keypair
+      mintTransaction.partialSign(mintKeypair);
+      const signedMintTransaction = await wallet.adapter.signTransaction(mintTransaction);
+      const mintSignature = await this.connection.sendRawTransaction(signedMintTransaction.serialize());
+      await this.connection.confirmTransaction(mintSignature);
+
+      console.log('Mint created:', mintKeypair.publicKey.toBase58());
+
+      // Create associated token account
       const tokenAccount = await getOrCreateAssociatedTokenAccount(
         this.connection,
-        payer,
-        mint,
-        payer.publicKey
+        mintKeypair, // This will use the mintKeypair for signing, but we need to handle this differently
+        mintKeypair.publicKey,
+        walletPublicKey
       );
 
       console.log('Token account created:', tokenAccount.address.toBase58());
 
-      // Mint tokens to the token account
-      const mintSignature = await mintTo(
-        this.connection,
-        payer,
-        mint,
+      // Mint tokens - we need to create this transaction manually since we're using wallet adapter
+      const mintToTransaction = new Transaction();
+      const { createMintToInstruction } = await import('@solana/spl-token');
+      const mintToInstruction = createMintToInstruction(
+        mintKeypair.publicKey,
         tokenAccount.address,
-        payer,
+        walletPublicKey, // mint authority
         metadata.supply * Math.pow(10, metadata.decimals)
       );
 
-      console.log('Tokens minted, signature:', mintSignature);
+      mintToTransaction.add(mintToInstruction);
 
-      // Revoke authorities if requested
-      const revokeSignatures: string[] = [];
+      const { blockhash: mintToBlockhash } = await this.connection.getLatestBlockhash();
+      mintToTransaction.recentBlockhash = mintToBlockhash;
+      mintToTransaction.feePayer = walletPublicKey;
 
-      if (metadata.revokeMintAuthority) {
-        const revokeMintSig = await setAuthority(
-          this.connection,
-          payer,
-          mint,
-          payer,
-          AuthorityType.MintTokens,
-          null
-        );
-        revokeSignatures.push(revokeMintSig);
-        console.log('Mint authority revoked:', revokeMintSig);
+      const signedMintToTransaction = await wallet.adapter.signTransaction(mintToTransaction);
+      const mintToSignature = await this.connection.sendRawTransaction(signedMintToTransaction.serialize());
+      await this.connection.confirmTransaction(mintToSignature);
+
+      console.log('Tokens minted, signature:', mintToSignature);
+
+      // Handle authority revocations if requested
+      if (metadata.revokeMintAuthority || metadata.revokeFreezeAuthority) {
+        const revokeTransaction = new Transaction();
+
+        if (metadata.revokeMintAuthority) {
+          const { createSetAuthorityInstruction } = await import('@solana/spl-token');
+          const revokeMintInstruction = createSetAuthorityInstruction(
+            mintKeypair.publicKey,
+            walletPublicKey,
+            AuthorityType.MintTokens,
+            null
+          );
+          revokeTransaction.add(revokeMintInstruction);
+        }
+
+        if (metadata.revokeFreezeAuthority) {
+          const { createSetAuthorityInstruction } = await import('@solana/spl-token');
+          const revokeFreezeInstruction = createSetAuthorityInstruction(
+            mintKeypair.publicKey,
+            walletPublicKey,
+            AuthorityType.FreezeAccount,
+            null
+          );
+          revokeTransaction.add(revokeFreezeInstruction);
+        }
+
+        if (revokeTransaction.instructions.length > 0) {
+          const { blockhash: revokeBlockhash } = await this.connection.getLatestBlockhash();
+          revokeTransaction.recentBlockhash = revokeBlockhash;
+          revokeTransaction.feePayer = walletPublicKey;
+
+          const signedRevokeTransaction = await wallet.adapter.signTransaction(revokeTransaction);
+          const revokeSignature = await this.connection.sendRawTransaction(signedRevokeTransaction.serialize());
+          await this.connection.confirmTransaction(revokeSignature);
+
+          console.log('Authorities revoked:', revokeSignature);
+        }
       }
 
-      if (metadata.revokeFreezeAuthority) {
-        const revokeFreezeSig = await setAuthority(
-          this.connection,
-          payer,
-          mint,
-          payer,
-          AuthorityType.FreezeAccount,
-          null
-        );
-        revokeSignatures.push(revokeFreezeSig);
-        console.log('Freeze authority revoked:', revokeFreezeSig);
-      }
-
-      const explorerUrl = this.getExplorerUrl(mint.toBase58());
+      const explorerUrl = this.getExplorerUrl(mintKeypair.publicKey.toBase58());
 
       return {
-        mintAddress: mint.toBase58(),
+        mintAddress: mintKeypair.publicKey.toBase58(),
         tokenAccountAddress: tokenAccount.address.toBase58(),
-        transactionSignature: mintSignature,
+        transactionSignature: mintToSignature,
         explorerUrl
       };
 
