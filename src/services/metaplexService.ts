@@ -6,8 +6,11 @@ import {
   SYSVAR_RENT_PUBKEY
 } from '@solana/web3.js';
 import {
-  createMetadataAccountV3Instruction,
-  MPL_TOKEN_METADATA_PROGRAM_ID
+  createCreateMetadataAccountV3Instruction,
+  CreateMetadataAccountV3InstructionAccounts,
+  CreateMetadataAccountV3InstructionArgs,
+  MPL_TOKEN_METADATA_PROGRAM_ID,
+  DataV2
 } from '@metaplex-foundation/mpl-token-metadata';
 import { IPFSService } from './ipfsService';
 
@@ -58,31 +61,35 @@ export class MetaplexService {
   ): Promise<Transaction> {
     const metadataAddress = MetaplexService.getMetadataAddress(mintPublicKey);
 
-    const createMetadataInstruction = createMetadataAccountV3Instruction(
-      {
-        metadata: metadataAddress,
-        mint: mintPublicKey,
-        mintAuthority: payerPublicKey,
-        payer: payerPublicKey,
-        updateAuthority: payerPublicKey,
-        systemProgram: SystemProgram.programId,
-        rent: SYSVAR_RENT_PUBKEY,
-      },
-      {
-        createMetadataAccountArgsV3: {
-          data: {
-            name: metadata.name,
-            symbol: metadata.symbol,
-            uri: metadata.uri,
-            sellerFeeBasisPoints: metadata.sellerFeeBasisPoints,
-            creators: metadata.creators || null,
-            collection: metadata.collection || null,
-            uses: metadata.uses || null,
-          },
-          isMutable: true,
-          collectionDetails: null,
-        }
-      }
+    const accounts: CreateMetadataAccountV3InstructionAccounts = {
+      metadata: metadataAddress,
+      mint: mintPublicKey,
+      mintAuthority: payerPublicKey,
+      payer: payerPublicKey,
+      updateAuthority: payerPublicKey,
+      systemProgram: SystemProgram.programId,
+      rent: SYSVAR_RENT_PUBKEY,
+    };
+
+    const dataV2: DataV2 = {
+      name: metadata.name,
+      symbol: metadata.symbol,
+      uri: metadata.uri,
+      sellerFeeBasisPoints: metadata.sellerFeeBasisPoints,
+      creators: metadata.creators || null,
+      collection: metadata.collection || null,
+      uses: metadata.uses || null,
+    };
+
+    const args: CreateMetadataAccountV3InstructionArgs = {
+      data: dataV2,
+      isMutable: true,
+      collectionDetails: null,
+    };
+
+    const createMetadataInstruction = createCreateMetadataAccountV3Instruction(
+      accounts,
+      args
     );
 
     const transaction = new Transaction().add(createMetadataInstruction);
