@@ -1,5 +1,3 @@
-
-
 import { 
   Connection, 
   PublicKey, 
@@ -8,7 +6,7 @@ import {
   SYSVAR_RENT_PUBKEY
 } from '@solana/web3.js';
 import {
-  createCreateMetadataAccountV3Instruction,
+  createMetadataAccountV3Instruction,
   MPL_TOKEN_METADATA_PROGRAM_ID
 } from '@metaplex-foundation/mpl-token-metadata';
 import { IPFSService } from './ipfsService';
@@ -60,7 +58,7 @@ export class MetaplexService {
   ): Promise<Transaction> {
     const metadataAddress = MetaplexService.getMetadataAddress(mintPublicKey);
 
-    const createMetadataInstruction = createCreateMetadataAccountV3Instruction(
+    const createMetadataInstruction = createMetadataAccountV3Instruction(
       {
         metadata: metadataAddress,
         mint: mintPublicKey,
@@ -137,4 +135,3 @@ export class MetaplexService {
     return { transaction, metadataUri };
   }
 }
-
