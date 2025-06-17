@@ -84,6 +84,11 @@ const ChatInterface = () => {
         setCurrentTokenData(aiResponse.tokenData);
       }
       setIsTyping(false);
+      
+      // Show panels after AI responds (instead of when typing)
+      if (!showPanels) {
+        setShowPanels(true);
+      }
     }, 1500);
   };
 
@@ -293,7 +298,7 @@ const ChatInterface = () => {
           <div className="flex space-x-3">
             <Input
               value={inputValue}
-              onChange={handleInputChange}
+              onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
               placeholder="Try: 'Create MyToken with 5 million supply' or 'Change supply to 10 million'"
               className="flex-1 bg-white/10 border-white/20 text-white placeholder-white/60 focus:border-purple-400"
@@ -309,7 +314,7 @@ const ChatInterface = () => {
         </div>
       </Card>
 
-      {/* Token Creation Panel - Show when user starts typing */}
+      {/* Token Creation Panel - Show after chat interaction */}
       {showPanels && (
         <div className="mt-6">
           <TokenCreationPanel 
