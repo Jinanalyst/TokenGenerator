@@ -61,6 +61,22 @@ export class MetaplexService {
 
     const createMetadataInstruction = createMetadataAccountV3(
       {
+        payer: payerPublicKey,
+      },
+      {
+        createMetadataAccountV3InstructionData: {
+          data: {
+            name: metadata.name,
+            symbol: metadata.symbol,
+            uri: metadata.uri,
+            sellerFeeBasisPoints: metadata.sellerFeeBasisPoints,
+            creators: metadata.creators || null,
+            collection: metadata.collection || null,
+            uses: metadata.uses || null,
+          },
+          isMutable: true,
+          collectionDetails: null,
+        },
         metadata: metadataAddress,
         mint: mintPublicKey,
         mintAuthority: payerPublicKey,
@@ -68,19 +84,6 @@ export class MetaplexService {
         updateAuthority: payerPublicKey,
         systemProgram: SystemProgram.programId,
         rent: SYSVAR_RENT_PUBKEY,
-      },
-      {
-        data: {
-          name: metadata.name,
-          symbol: metadata.symbol,
-          uri: metadata.uri,
-          sellerFeeBasisPoints: metadata.sellerFeeBasisPoints,
-          creators: metadata.creators || null,
-          collection: metadata.collection || null,
-          uses: metadata.uses || null,
-        },
-        isMutable: true,
-        collectionDetails: null,
       }
     );
 
