@@ -27,7 +27,7 @@ import { SecurityConfig } from './securityConfig';
 import { createUserFriendlyError, rateLimiter } from '../utils/errorHandling';
 import { validateTokenName, validateTokenSymbol, validateTokenSupply, validateDecimals } from '../utils/inputValidation';
 import { MetaplexService } from './metaplexService';
-import { TokenMetadata, TokenCreationResult, TransactionTest } from './solanaService';
+import { TokenMetadata, TokenCreationResult } from './solanaService';
 
 interface RPCEndpoint {
   url: string;
@@ -83,7 +83,7 @@ export class EnhancedSolanaService {
       rpc.url, 
       {
         commitment: 'confirmed' as Commitment,
-        confirmTransactionInitialTimeout: 30000, // Reduced timeout for faster failover
+        confirmTransactionInitialTimeout: 30000,
         wsEndpoint: undefined,
         httpHeaders: {
           'Content-Type': 'application/json',
@@ -120,13 +120,13 @@ export class EnhancedSolanaService {
         
         console.log(`Testing ${endpointName}...`);
         
-        // Simple version check with shorter timeout
-        const versionPromise = connection.getVersion();
+        // Use getEpochInfo instead of getVersion for better connection test
+        const epochPromise = connection.getEpochInfo('confirmed');
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Connection timeout')), 5000)
+          setTimeout(() => reject(new Error('Connection timeout')), 8000)
         );
         
-        await Promise.race([versionPromise, timeoutPromise]);
+        await Promise.race([epochPromise, timeoutPromise]);
         
         // Quick blockhash test
         await connection.getLatestBlockhash('confirmed');
@@ -272,7 +272,7 @@ export class EnhancedSolanaService {
         
         console.log('Estimating transaction fees...');
         const feeEstimate = await connection.getFeeForMessage(testTransaction.compileMessage());
-        const networkMultiplier = this.network === 'mainnet' ? 3 : 1; // Higher fees expected on mainnet
+        const networkMultiplier = this.network === 'mainnet' ? 3 : 1;
         estimatedFee = ((feeEstimate?.value || 10000) * networkMultiplier) / LAMPORTS_PER_SOL;
         console.log(`Estimated fees: ${estimatedFee} SOL`);
       } catch (error) {
