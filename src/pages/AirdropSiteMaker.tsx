@@ -1,12 +1,15 @@
-
 import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import AirdropCreator from '@/components/AirdropCreator';
 import AirdropDashboard from '@/components/AirdropDashboard';
 import { supabase } from '@/integrations/supabase/client';
+import { useDemoMode } from '@/hooks/useDemoMode';
+import DemoBanner from '@/components/DemoBanner';
 
 interface Token {
   id: string;
@@ -20,10 +23,25 @@ interface Token {
 const AirdropSiteMaker = () => {
   const [mainnetTokens, setMainnetTokens] = useState<Token[]>([]);
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
+  const { isDemoMode, setIsDemoMode } = useDemoMode();
 
   useEffect(() => {
-    loadMainnetTokens();
-  }, []);
+    if (isDemoMode) {
+      // In demo mode, create a mock token
+      const mockTokens = [{
+        id: 'demo-token-1',
+        name: 'Demo Token',
+        symbol: 'DEMO',
+        mint_address: '11111111111111111111111111111112',
+        status: 'completed',
+        network: 'mainnet'
+      }];
+      setMainnetTokens(mockTokens);
+      setSelectedToken(mockTokens[0]);
+    } else {
+      loadMainnetTokens();
+    }
+  }, [isDemoMode]);
 
   const loadMainnetTokens = async () => {
     try {
@@ -62,6 +80,14 @@ const AirdropSiteMaker = () => {
                 Back to Home
               </Button>
             </Link>
+            
+            <div className="flex items-center space-x-3">
+              <Label className="text-white">Demo Mode</Label>
+              <Switch 
+                checked={isDemoMode} 
+                onCheckedChange={setIsDemoMode}
+              />
+            </div>
           </div>
           
           <div className="text-center">
@@ -85,7 +111,7 @@ const AirdropSiteMaker = () => {
       <div className="relative z-10 flex-1">
         <div className="container mx-auto px-4 pb-8">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-            {mainnetTokens.length === 0 ? (
+            {mainnetTokens.length === 0 && !isDemoMode ? (
               <div className="text-center py-12">
                 <p className="text-white text-lg mb-4">No mainnet tokens found.</p>
                 <p className="text-purple-200">Please create a mainnet token first to use the Airdrop Site Maker.</p>
@@ -99,7 +125,10 @@ const AirdropSiteMaker = () => {
               <>
                 {/* Token Selection */}
                 <div className="mb-6">
-                  <h3 className="text-white text-lg font-semibold mb-3">Select Token for Airdrop:</h3>
+                  <h3 className="text-white text-lg font-semibold mb-3">
+                    Select Token for Airdrop:
+                    {isDemoMode && <span className="text-blue-300 text-sm ml-2">(Demo Mode)</span>}
+                  </h3>
                   <div className="flex flex-wrap gap-2">
                     {mainnetTokens.map((token) => (
                       <Button
@@ -112,6 +141,7 @@ const AirdropSiteMaker = () => {
                         }
                       >
                         {token.name} ({token.symbol})
+                        {isDemoMode && <span className="ml-1 text-xs">(Demo)</span>}
                       </Button>
                     ))}
                   </div>

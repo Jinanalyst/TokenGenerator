@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
@@ -6,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
 import { 
   ArrowLeft, 
   Bot, 
@@ -19,12 +21,17 @@ import {
   CheckCircle,
   Coins,
   BarChart3,
-  Clock
+  Clock,
+  Eye,
+  Wallet
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useSolana } from '../hooks/useSolana';
 import { useMarketMaker } from '../hooks/useMarketMaker';
 import { usePaymentProcessor } from '../hooks/usePaymentProcessor';
+import { useDemoMode, generateMockMarketMakerBot, generateMockTrades, generateMockMarketData, generateMockTradingStats } from '../hooks/useDemoMode';
+import MarketMakerDashboard from '../components/MarketMakerDashboard';
+import DemoBanner from '../components/DemoBanner';
 
 const MarketMaker = () => {
   const [searchParams] = useSearchParams();
@@ -32,12 +39,13 @@ const MarketMaker = () => {
   const { toast } = useToast();
   const { createBot } = useMarketMaker();
   const { processPayment, isProcessing } = usePaymentProcessor();
+  const { isDemoMode, setIsDemoMode } = useDemoMode();
   
-  // Token data from URL params
-  const tokenMintAddress = searchParams.get('mint');
-  const tokenSymbol = searchParams.get('symbol');
-  const tokenName = searchParams.get('name');
-  const network = searchParams.get('network');
+  // Token data from URL params or demo data
+  const tokenMintAddress = searchParams.get('mint') || '11111111111111111111111111111112';
+  const tokenSymbol = searchParams.get('symbol') || 'DEMO';
+  const tokenName = searchParams.get('name') || 'Demo Token';
+  const network = searchParams.get('network') || 'mainnet';
   
   // Bot configuration state
   const [botConfig, setBotConfig] = useState({
@@ -50,12 +58,20 @@ const MarketMaker = () => {
   });
   
   const [isCreating, setIsCreating] = useState(false);
-  const [isMainnet, setIsMainnet] = useState(false);
-  const [wallet, setWallet] = useState<any>(null);
+  const [isMainnet, setIsMainnet] = useState(true);
+  const [wallet, setWallet] = useState<any>(isDemoMode ? { connected: true } : null);
+  const [showDashboard, setShowDashboard] = useState(false);
   
   const solana = useSolana('mainnet');
 
   useEffect(() => {
+    // In demo mode, always show as mainnet with connected wallet
+    if (isDemoMode) {
+      setIsMainnet(true);
+      setWallet({ connected: true });
+      return;
+    }
+
     // Check if we have required token data
     if (!tokenMintAddress || !tokenSymbol || !tokenName) {
       toast({
@@ -73,7 +89,7 @@ const MarketMaker = () => {
     // Get wallet connection
     // This would be passed from a wallet provider context in a real app
     setWallet(null); // Placeholder
-  }, [tokenMintAddress, tokenSymbol, tokenName, network, navigate, toast]);
+  }, [tokenMintAddress, tokenSymbol, tokenName, network, navigate, toast, isDemoMode]);
 
   const handleConfigChange = (field: string, value: number | number[]) => {
     setBotConfig(prev => ({
@@ -87,6 +103,21 @@ const MarketMaker = () => {
   };
 
   const handleCreateBot = async () => {
+    if (isDemoMode) {
+      // Demo mode - simulate bot creation and show dashboard
+      setIsCreating(true);
+      
+      setTimeout(() => {
+        toast({
+          title: "Demo Bot Created! 🤖",
+          description: `Demo market maker bot activated for ${tokenSymbol}. This is a simulation.`,
+        });
+        setShowDashboard(true);
+        setIsCreating(false);
+      }, 2000);
+      return;
+    }
+
     if (!isMainnet) {
       toast({
         title: "Mainnet Required",
@@ -151,7 +182,46 @@ const MarketMaker = () => {
     }
   };
 
-  if (!isMainnet) {
+  // If showing dashboard in demo mode, render the dashboard with mock data
+  if (showDashboard && isDemoMode) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 relative overflow-hidden">
+        <div className="absolute inset-0 opacity-20">
+          <div className="w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-purple-500/10 via-transparent to-blue-500/10"></div>
+        </div>
+        
+        <div className="relative z-10 pt-8 pb-4">
+          <div className="container mx-auto px-4">
+            <div className="flex items-center justify-between mb-6">
+              <Button 
+                onClick={() => setShowDashboard(false)}
+                variant="outline" 
+                size="sm" 
+                className="border-purple-300 text-purple-300 hover:bg-purple-300 hover:text-purple-900 backdrop-blur-sm"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Configuration
+              </Button>
+              
+              <div className="flex items-center space-x-3">
+                <Label className="text-white">Demo Mode</Label>
+                <Switch 
+                  checked={isDemoMode} 
+                  onCheckedChange={setIsDemoMode}
+                />
+              </div>
+            </div>
+
+            <DemoBanner type="market-maker" className="mb-6" />
+            
+            <MarketMakerDashboard botId="demo-bot-1" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isMainnet && !isDemoMode) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 relative overflow-hidden">
         <div className="absolute inset-0 opacity-20">
@@ -214,12 +284,24 @@ const MarketMaker = () => {
       
       <div className="relative z-10 pt-8 pb-4">
         <div className="container mx-auto px-4">
-          <Link to="/app">
-            <Button variant="outline" size="sm" className="border-purple-300 text-purple-300 hover:bg-purple-300 hover:text-purple-900 backdrop-blur-sm mb-6">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to App
-            </Button>
-          </Link>
+          <div className="flex items-center justify-between mb-6">
+            <Link to="/app">
+              <Button variant="outline" size="sm" className="border-purple-300 text-purple-300 hover:bg-purple-300 hover:text-purple-900 backdrop-blur-sm">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to App
+              </Button>
+            </Link>
+            
+            <div className="flex items-center space-x-3">
+              <Label className="text-white">Demo Mode</Label>
+              <Switch 
+                checked={isDemoMode} 
+                onCheckedChange={setIsDemoMode}
+              />
+            </div>
+          </div>
+
+          {isDemoMode && <DemoBanner type="market-maker" className="mb-6" />}
           
           <div className="max-w-4xl mx-auto">
             {/* Header */}
@@ -236,7 +318,7 @@ const MarketMaker = () => {
                 Generate organic trading volume and improve market presence for your token
               </p>
               <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white mt-2">
-                Mainnet Only
+                {isDemoMode ? 'Demo Mode' : 'Mainnet Only'}
               </Badge>
             </div>
 
@@ -254,7 +336,7 @@ const MarketMaker = () => {
                 <div>
                   <p className="text-purple-300 text-sm">Network</p>
                   <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white">
-                    Mainnet
+                    {isDemoMode ? 'Demo' : 'Mainnet'}
                   </Badge>
                 </div>
               </div>
@@ -365,10 +447,11 @@ const MarketMaker = () => {
                     <div className="text-center">
                       <p className="text-green-300 text-sm mb-2">Total Cost</p>
                       <p className="text-4xl font-bold text-white mb-2">
-                        {calculatePrice().toFixed(2)} SOL
+                        {isDemoMode ? '0.00' : calculatePrice().toFixed(2)} SOL
                       </p>
                       <p className="text-green-200 text-sm">
                         {botConfig.packageSize} Market Makers × {botConfig.duration}h
+                        {isDemoMode && <span className="block text-blue-300">(Demo - No Payment Required)</span>}
                       </p>
                     </div>
                   </div>
@@ -402,7 +485,7 @@ const MarketMaker = () => {
                   {/* Action Button */}
                   <Button
                     onClick={handleCreateBot}
-                    disabled={isCreating || isProcessing || !wallet}
+                    disabled={isCreating || (!isDemoMode && (isProcessing || !wallet))}
                     className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white py-4 text-lg font-semibold"
                   >
                     {isCreating || isProcessing ? (
@@ -410,9 +493,14 @@ const MarketMaker = () => {
                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                         <span>{isProcessing ? 'Processing Payment...' : 'Creating Bot...'}</span>
                       </div>
+                    ) : isDemoMode ? (
+                      <div className="flex items-center space-x-2">
+                        <Eye className="w-5 h-5" />
+                        <span>Launch Demo Market Maker Bot</span>
+                      </div>
                     ) : !wallet ? (
                       <div className="flex items-center space-x-2">
-                        <AlertTriangle className="w-5 h-5" />
+                        <Wallet className="w-5 h-5" />
                         <span>Connect Wallet to Continue</span>
                       </div>
                     ) : (
@@ -427,12 +515,14 @@ const MarketMaker = () => {
             </div>
 
             {/* Disclaimer */}
-            <Card className="bg-orange-500/10 backdrop-blur-lg border-orange-500/30 p-4 mt-8">
-              <p className="text-orange-200 text-sm text-center">
-                <strong>Notice:</strong> Market maker bots process real payments and generate actual trading volume on Solana DEX platforms. 
-                Payments are processed immediately upon confirmation. All transactions are recorded on the blockchain and cannot be reversed.
-              </p>
-            </Card>
+            {!isDemoMode && (
+              <Card className="bg-orange-500/10 backdrop-blur-lg border-orange-500/30 p-4 mt-8">
+                <p className="text-orange-200 text-sm text-center">
+                  <strong>Notice:</strong> Market maker bots process real payments and generate actual trading volume on Solana DEX platforms. 
+                  Payments are processed immediately upon confirmation. All transactions are recorded on the blockchain and cannot be reversed.
+                </p>
+              </Card>
+            )}
           </div>
         </div>
       </div>

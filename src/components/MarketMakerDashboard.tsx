@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useMarketMaker, MarketMakerBot } from '../hooks/useMarketMaker';
 import { useTradingEngine, TradingEngineStats, MarketData } from '../hooks/useTradingEngine';
+import { useDemoMode, generateMockMarketMakerBot, generateMockTrades, generateMockMarketData, generateMockTradingStats } from '../hooks/useDemoMode';
 
 interface MarketMakerDashboardProps {
   botId?: string;
@@ -32,22 +33,38 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
     getTradingStats,
     startScheduler 
   } = useTradingEngine();
+  const { isDemoMode } = useDemoMode();
   
   const [tradingStats, setTradingStats] = useState<TradingEngineStats | null>(null);
   const [marketData, setMarketData] = useState<MarketData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  
-  const currentBot = botId ? bots.find(bot => bot.id === botId) : bots[0];
+
+  // Use demo data if in demo mode and botId is demo-bot-1
+  const isDemoBot = botId === 'demo-bot-1';
+  const currentBot = isDemoBot && isDemoMode 
+    ? generateMockMarketMakerBot() 
+    : botId ? bots.find(bot => bot.id === botId) : bots[0];
+
+  const currentTrades = isDemoBot && isDemoMode 
+    ? generateMockTrades() 
+    : trades;
 
   useEffect(() => {
-    if (currentBot?.id) {
+    if (isDemoBot && isDemoMode) {
+      // Use demo data
+      setTradingStats(generateMockTradingStats());
+      setMarketData(generateMockMarketData());
+      return;
+    }
+
+    if (currentBot?.id && !isDemoMode) {
       fetchTrades(currentBot.id);
       loadTradingData();
     }
-  }, [currentBot?.id, fetchTrades]);
+  }, [currentBot?.id, fetchTrades, isDemoBot, isDemoMode]);
 
   const loadTradingData = async () => {
-    if (!currentBot) return;
+    if (!currentBot || isDemoMode) return;
     
     try {
       const [stats, market] = await Promise.all([
@@ -65,9 +82,14 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await loadTradingData();
-      if (currentBot?.id) {
-        await fetchTrades(currentBot.id);
+      if (isDemoMode) {
+        // Simulate refresh delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else {
+        await loadTradingData();
+        if (currentBot?.id) {
+          await fetchTrades(currentBot.id);
+        }
       }
     } finally {
       setRefreshing(false);
@@ -76,6 +98,11 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
 
   const handleManualTrade = async () => {
     if (!currentBot) return;
+    
+    if (isDemoMode) {
+      console.log('Manual trade executed (demo mode)');
+      return;
+    }
     
     try {
       await executeManualTrade(currentBot.id);
@@ -89,6 +116,11 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
   const handleStatusChange = async (newStatus: MarketMakerBot['status']) => {
     if (!currentBot) return;
     
+    if (isDemoMode) {
+      console.log(`Bot status changed to: ${newStatus} (demo mode)`);
+      return;
+    }
+    
     try {
       await updateBotStatus(currentBot.id, newStatus);
       if (newStatus === 'active') {
@@ -100,7 +132,7 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
     }
   };
 
-  if (loading) {
+  if (loading && !isDemoMode) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="w-8 h-8 border-2 border-purple-300 border-t-white rounded-full animate-spin"></div>
@@ -135,6 +167,7 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
             <Bot className="w-6 h-6 text-purple-400" />
             <h2 className="text-2xl font-bold text-white">
               {currentBot.token_symbol} Market Maker Bot
+              {isDemoMode && <span className="text-blue-300 text-sm ml-2">(Demo)</span>}
             </h2>
           </div>
           <div className="flex items-center space-x-3">
@@ -200,7 +233,7 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
           <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-lg p-4 mb-6 border border-blue-500/30">
             <h3 className="text-white font-semibold mb-3 flex items-center space-x-2">
               <Activity className="w-4 h-4 text-blue-400" />
-              <span>Live Market Data</span>
+              <span>Live Market Data{isDemoMode && ' (Demo)'}</span>
             </h3>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
@@ -243,16 +276,16 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
               
               <Button
                 onClick={handleManualTrade}
-                disabled={engineLoading}
+                disabled={engineLoading && !isDemoMode}
                 variant="outline"
                 className="border-blue-300 text-blue-300 hover:bg-blue-300 hover:text-blue-900"
               >
-                {engineLoading ? (
+                {engineLoading && !isDemoMode ? (
                   <div className="w-4 h-4 border-2 border-blue-300/30 border-t-blue-300 rounded-full animate-spin mr-2"></div>
                 ) : (
                   <Zap className="w-4 h-4 mr-2" />
                 )}
-                Execute Trade
+                Execute Trade{isDemoMode && ' (Demo)'}
               </Button>
             </>
           )}
@@ -282,16 +315,18 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
       {/* Enhanced Recent Trades */}
       <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-bold text-white">Recent Trades</h3>
+          <h3 className="text-xl font-bold text-white">
+            Recent Trades{isDemoMode && ' (Demo)'}
+          </h3>
           {tradingStats?.lastTradeTime && (
             <p className="text-gray-400 text-sm">
               Last trade: {new Date(tradingStats.lastTradeTime).toLocaleTimeString()}
             </p>
           )}
         </div>
-        {trades.length > 0 ? (
+        {currentTrades.length > 0 ? (
           <div className="space-y-2">
-            {trades.slice(0, 10).map((trade) => (
+            {currentTrades.slice(0, 10).map((trade) => (
               <div key={trade.id} className="bg-white/5 rounded-lg p-3 flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <Badge className={trade.trade_type === 'buy' ? 'bg-green-500' : 'bg-red-500'}>
@@ -301,7 +336,7 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
                     {Number(trade.amount).toFixed(6)} {currentBot.token_symbol}
                   </span>
                   <span className="text-gray-400 text-sm">
-                    {trade.transaction_signature.startsWith('sim_') ? '(Simulated)' : ''}
+                    {isDemoMode || trade.transaction_signature.startsWith('sim_') || trade.transaction_signature.startsWith('demo_') ? '(Simulated)' : ''}
                   </span>
                 </div>
                 <div className="text-right">
