@@ -22,9 +22,11 @@ export interface CreateCampaignData {
   tokenName: string;
   tokenSymbol: string;
   campaignName: string;
-  walletList: string[];
+  claimSiteUrl: string;
   quantityPerWallet: number;
+  totalAmountClaimable: number;
   finishDate?: string;
+  walletList: Array<{address: string, quantity: number}>;
 }
 
 export const useAirdrop = () => {

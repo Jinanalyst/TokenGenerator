@@ -19,6 +19,7 @@ interface Token {
 
 const AirdropSiteMaker = () => {
   const [mainnetTokens, setMainnetTokens] = useState<Token[]>([]);
+  const [selectedToken, setSelectedToken] = useState<Token | null>(null);
 
   useEffect(() => {
     loadMainnetTokens();
@@ -34,6 +35,11 @@ const AirdropSiteMaker = () => {
 
       if (error) throw error;
       setMainnetTokens(data || []);
+      
+      // Auto-select first token if available
+      if (data && data.length > 0) {
+        setSelectedToken(data[0]);
+      }
     } catch (error) {
       console.error('Failed to load mainnet tokens:', error);
     }
@@ -79,20 +85,64 @@ const AirdropSiteMaker = () => {
       <div className="relative z-10 flex-1">
         <div className="container mx-auto px-4 pb-8">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-            <Tabs defaultValue="create" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="create">Create Campaign</TabsTrigger>
-                <TabsTrigger value="manage">Manage Campaigns</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="create" className="space-y-6">
-                <AirdropCreator mainnetTokens={mainnetTokens} />
-              </TabsContent>
-              
-              <TabsContent value="manage" className="space-y-6">
-                <AirdropDashboard />
-              </TabsContent>
-            </Tabs>
+            {mainnetTokens.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-white text-lg mb-4">No mainnet tokens found.</p>
+                <p className="text-purple-200">Please create a mainnet token first to use the Airdrop Site Maker.</p>
+                <Link to="/app">
+                  <Button className="mt-4 bg-purple-600 hover:bg-purple-700">
+                    Create Token
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <>
+                {/* Token Selection */}
+                <div className="mb-6">
+                  <h3 className="text-white text-lg font-semibold mb-3">Select Token for Airdrop:</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {mainnetTokens.map((token) => (
+                      <Button
+                        key={token.id}
+                        onClick={() => setSelectedToken(token)}
+                        variant={selectedToken?.id === token.id ? "default" : "outline"}
+                        className={selectedToken?.id === token.id 
+                          ? "bg-purple-600 text-white" 
+                          : "border-purple-300 text-purple-300 hover:bg-purple-300 hover:text-purple-900"
+                        }
+                      >
+                        {token.name} ({token.symbol})
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <Tabs defaultValue="create" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2 mb-6">
+                    <TabsTrigger value="create">Create Campaign</TabsTrigger>
+                    <TabsTrigger value="manage">Manage Campaigns</TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="create" className="space-y-6">
+                    {selectedToken ? (
+                      <AirdropCreator 
+                        tokenAddress={selectedToken.mint_address}
+                        tokenName={selectedToken.name}
+                        tokenSymbol={selectedToken.symbol}
+                      />
+                    ) : (
+                      <div className="text-center py-8">
+                        <p className="text-white">Please select a token to create an airdrop campaign.</p>
+                      </div>
+                    )}
+                  </TabsContent>
+                  
+                  <TabsContent value="manage" className="space-y-6">
+                    <AirdropDashboard />
+                  </TabsContent>
+                </Tabs>
+              </>
+            )}
           </div>
         </div>
       </div>
