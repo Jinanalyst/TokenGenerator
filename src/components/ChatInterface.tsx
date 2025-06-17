@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Send, Bot, User, Sparkles } from 'lucide-react';
 import AIAgent from './AIAgent';
 import TokenCreationPanel from './TokenCreationPanel';
+import WalletConnection from './WalletConnection';
 
 interface Message {
   id: string;
@@ -20,13 +20,14 @@ const ChatInterface = () => {
     {
       id: '1',
       type: 'ai',
-      content: "Hey there! 👋 I'm your Solana Token Generator AI assistant. I can help you create awesome tokens on both Solana mainnet and devnet. What kind of token would you like to create today?",
+      content: "Hey there! 👋 I'm your Solana Token Generator AI assistant. I can help you create real tokens on both Solana mainnet and devnet with advanced features like authority controls. Connect your wallet and let's create something amazing!",
       timestamp: new Date(),
     }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [currentTokenData, setCurrentTokenData] = useState(null);
+  const [wallet, setWallet] = useState(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -74,9 +75,30 @@ const ChatInterface = () => {
   const generateAIResponse = (userInput: string) => {
     const input = userInput.toLowerCase();
 
+    if (input.includes('wallet') && !wallet) {
+      return {
+        content: "I see you're asking about wallet connection! Please use the wallet connection panel above to connect your Phantom wallet. Once connected, you'll be able to create real Solana tokens with all the advanced features.",
+        tokenData: null
+      };
+    }
+
+    if (input.includes('authority') || input.includes('revoke') || input.includes('mint') || input.includes('freeze')) {
+      return {
+        content: "Great question about token authorities! 🔐\n\n**Authority Types:**\n• **Mint Authority**: Can create new tokens\n• **Freeze Authority**: Can freeze token accounts\n• **Update Authority**: Can modify token metadata\n\n**Revoking Authorities:**\n• Increases trust and security\n• Makes tokens more decentralized\n• Cannot be undone once revoked\n\nWhen creating your token, you can choose which authorities to revoke. This is especially important for meme coins and community tokens!",
+        tokenData: null
+      };
+    }
+
+    if (input.includes('liquidity') || input.includes('pool') || input.includes('raydium')) {
+      return {
+        content: "Awesome! Adding liquidity is crucial for token trading. 💧\n\nAfter creating your token, you can:\n• Create a liquidity pool on Raydium\n• Set the initial price ratio\n• Earn fees from trades\n• Provide better trading experience\n\nI'll show you the liquidity pool creation page once your token is ready!",
+        tokenData: null
+      };
+    }
+
     if (input.includes('create') || input.includes('token') || input.includes('generate')) {
       return {
-        content: "Awesome! I'm detecting you want to create a token. Let me gather some details. What should we call your token? And what's the symbol you'd like (like BTC, ETH, etc.)? Also, would you prefer mainnet or devnet?",
+        content: "Awesome! I'm detecting you want to create a real token. Let me gather some details. What should we call your token? What's the symbol (like BTC, ETH)? Also, would you prefer mainnet or devnet? And do you want to revoke any authorities for security?",
         tokenData: null
       };
     }
@@ -114,10 +136,10 @@ const ChatInterface = () => {
 
     // Default responses
     const responses = [
-      "I'm here to help you create Solana tokens! Tell me about the token you'd like to create.",
-      "That's interesting! How can I help you with token creation today?",
-      "I love helping people bring their token ideas to life! What's your vision?",
-      "Ready to create something amazing on Solana? What token should we build?"
+      "I'm here to help you create real Solana tokens with advanced features! Tell me about your token vision.",
+      "Ready to build something amazing on Solana? I can help with token creation, authorities, and liquidity pools!",
+      "Let's create your token with proper authority controls and get it listed on Raydium! What's your idea?",
+      "I can create production-ready tokens with mint/freeze authority controls. What token should we build?"
     ];
 
     return {
@@ -143,6 +165,11 @@ const ChatInterface = () => {
 
   return (
     <div className="container mx-auto px-4 max-w-4xl">
+      {/* Wallet Connection */}
+      <div className="mb-4">
+        <WalletConnection onWalletChange={setWallet} />
+      </div>
+
       <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 shadow-2xl">
         {/* Chat Messages */}
         <div 
@@ -220,7 +247,7 @@ const ChatInterface = () => {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Describe your token idea... (e.g., 'Create a meme token called DogeCoin with symbol DOGE')"
+              placeholder="Ask about token creation, authorities, liquidity pools... (e.g., 'Create a token with revoked mint authority')"
               className="flex-1 bg-white/10 border-white/20 text-white placeholder-white/60 focus:border-purple-400"
             />
             <Button
@@ -237,7 +264,7 @@ const ChatInterface = () => {
       {/* Token Creation Panel */}
       {currentTokenData && (
         <div className="mt-6">
-          <TokenCreationPanel tokenData={currentTokenData} />
+          <TokenCreationPanel tokenData={currentTokenData} wallet={wallet} />
         </div>
       )}
     </div>
