@@ -55,13 +55,13 @@ export class EnhancedSolanaService {
   private static readonly MAX_RETRIES = 3;
   private static readonly CONFIRMATION_TIMEOUT = 60000;
 
-  // Enhanced RPC endpoints with working mainnet RPCs - using more reliable endpoints
+  // Updated with more reliable mainnet RPCs
   private static readonly MAINNET_RPCS: RPCEndpoint[] = [
-    { url: 'https://api.mainnet-beta.solana.com', name: 'Official Mainnet', priority: 1 },
-    { url: 'https://rpc.ankr.com/solana', name: 'Ankr', priority: 2 },
-    { url: 'https://mainnet.helius-rpc.com/?api-key=02b6df6c-8f47-4ce3-8d4b-3b1cc7b89e94', name: 'Helius RPC', priority: 3 },
-    { url: 'https://solana-api.projectserum.com', name: 'Project Serum', priority: 4 },
-    { url: 'https://solana-mainnet.rpc.extrnode.com', name: 'Extrnode', priority: 5 }
+    { url: 'https://solana-api.projectserum.com', name: 'Project Serum', priority: 1 },
+    { url: 'https://api.mainnet-beta.solana.com', name: 'Official Mainnet', priority: 2 },
+    { url: 'https://rpc.ankr.com/solana', name: 'Ankr', priority: 3 },
+    { url: 'https://solana-mainnet.g.alchemy.com/v2/demo', name: 'Alchemy Demo', priority: 4 },
+    { url: 'https://mainnet.helius-rpc.com/?api-key=02b6df6c-8f47-4ce3-8d4b-3b1cc7b89e94', name: 'Helius RPC', priority: 5 }
   ];
 
   private static readonly DEVNET_RPCS: RPCEndpoint[] = [
@@ -83,7 +83,7 @@ export class EnhancedSolanaService {
       rpc.url, 
       {
         commitment: 'confirmed' as Commitment,
-        confirmTransactionInitialTimeout: 30000,
+        confirmTransactionInitialTimeout: 20000,
         wsEndpoint: undefined,
         httpHeaders: {
           'Content-Type': 'application/json',
@@ -111,38 +111,52 @@ export class EnhancedSolanaService {
   }
 
   async checkConnection(): Promise<boolean> {
-    console.log(`Testing ${this.network} connections...`);
+    console.log(`Testing ${this.network} connections with improved reliability...`);
+    
+    // Reset to first endpoint
+    this.currentConnectionIndex = 0;
     
     for (let i = 0; i < this.connections.length; i++) {
       try {
         const connection = this.connections[i];
         const endpointName = this.rpcEndpoints[i]?.name || `RPC ${i + 1}`;
         
-        console.log(`Testing ${endpointName}...`);
+        console.log(`Testing ${endpointName} (${this.rpcEndpoints[i]?.url})...`);
         
-        // Use getEpochInfo instead of getVersion for better connection test
-        const epochPromise = connection.getEpochInfo('confirmed');
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Connection timeout')), 8000)
-        );
+        // Multiple quick tests to verify connection
+        const tests = await Promise.allSettled([
+          // Test 1: Get slot info
+          Promise.race([
+            connection.getSlot('confirmed'),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Slot timeout')), 5000))
+          ]),
+          
+          // Test 2: Get latest blockhash
+          Promise.race([
+            connection.getLatestBlockhash('confirmed'),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Blockhash timeout')), 5000))
+          ])
+        ]);
+
+        // Check if at least one test passed
+        const passedTests = tests.filter(test => test.status === 'fulfilled').length;
         
-        await Promise.race([epochPromise, timeoutPromise]);
-        
-        // Quick blockhash test
-        await connection.getLatestBlockhash('confirmed');
-        
-        console.log(`✅ Connected to ${this.network} via ${endpointName}`);
-        this.currentConnectionIndex = i;
-        return true;
+        if (passedTests >= 1) {
+          console.log(`✅ Connected to ${this.network} via ${endpointName} (${passedTests}/2 tests passed)`);
+          this.currentConnectionIndex = i;
+          return true;
+        } else {
+          console.warn(`❌ ${endpointName} failed all connection tests`);
+        }
         
       } catch (error) {
         const endpointName = this.rpcEndpoints[i]?.name || `RPC ${i + 1}`;
-        console.warn(`❌ ${endpointName} failed:`, error instanceof Error ? error.message : 'Unknown error');
+        console.warn(`❌ ${endpointName} connection error:`, error instanceof Error ? error.message : 'Unknown error');
         continue;
       }
     }
     
-    console.error(`❌ All ${this.network} RPC endpoints failed`);
+    console.error(`❌ All ${this.network} RPC endpoints failed connection tests`);
     return false;
   }
 
@@ -189,17 +203,23 @@ export class EnhancedSolanaService {
     let estimatedFee = 0;
 
     try {
-      console.log(`Testing transaction readiness on ${this.network}...`);
+      console.log(`Testing transaction readiness on ${this.network} with enhanced connection testing...`);
       
-      // Enhanced connection test with specific error handling
+      // Enhanced connection test with better error reporting
       const connectionStatus = await this.checkConnection();
       if (!connectionStatus) {
-        errors.push(`Cannot connect to ${this.network} - all RPC endpoints are failing. This could be due to network congestion or RPC issues.`);
+        const networkStatus = this.network === 'mainnet' ? 'Mainnet' : 'Devnet';
+        errors.push(`Cannot connect to ${networkStatus} - all RPC endpoints are currently unavailable. This could be due to:`);
+        errors.push('• Network congestion on Solana');
+        errors.push('• Temporary RPC provider issues');
+        errors.push('• Your internet connection');
+        errors.push('Please wait a few minutes and try again, or check if Solana network is experiencing issues.');
+        
         return { 
           success: false, 
           errors, 
-          connectionStatus,
-          currentRPC: this.getCurrentEndpointName()
+          connectionStatus: false,
+          currentRPC: 'No working RPC found'
         };
       }
 
