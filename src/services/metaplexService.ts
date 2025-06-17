@@ -6,7 +6,7 @@ import {
   SYSVAR_RENT_PUBKEY
 } from '@solana/web3.js';
 import {
-  createCreateMetadataAccountV3Instruction,
+  createMetadataAccountV3Instruction,
   CreateMetadataAccountV3InstructionAccounts,
   CreateMetadataAccountV3InstructionArgs,
   MPL_TOKEN_METADATA_PROGRAM_ID,
@@ -87,7 +87,7 @@ export class MetaplexService {
       collectionDetails: null,
     };
 
-    const createMetadataInstruction = createCreateMetadataAccountV3Instruction(
+    const createMetadataInstruction = createMetadataAccountV3Instruction(
       accounts,
       args
     );
