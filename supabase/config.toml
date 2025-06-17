@@ -60,3 +60,11 @@ verify_jwt = false
 [[functions]]
 slug = "verify-payment"
 verify_jwt = false
+
+[[functions]]
+slug = "market-maker-engine"
+verify_jwt = false
+
+[[functions]]
+slug = "market-maker-scheduler"
+verify_jwt = false

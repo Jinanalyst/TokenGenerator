@@ -1,5 +1,4 @@
-
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,9 +10,14 @@ import {
   TrendingUp, 
   BarChart3,
   Clock,
-  DollarSign
+  DollarSign,
+  Zap,
+  RefreshCw,
+  Activity,
+  Target
 } from 'lucide-react';
 import { useMarketMaker, MarketMakerBot } from '../hooks/useMarketMaker';
+import { useTradingEngine, TradingEngineStats, MarketData } from '../hooks/useTradingEngine';
 
 interface MarketMakerDashboardProps {
   botId?: string;
@@ -21,22 +25,64 @@ interface MarketMakerDashboardProps {
 
 const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) => {
   const { bots, trades, loading, fetchTrades, updateBotStatus } = useMarketMaker();
+  const { 
+    isLoading: engineLoading, 
+    executeManualTrade, 
+    getMarketData, 
+    getTradingStats,
+    startScheduler 
+  } = useTradingEngine();
+  
+  const [tradingStats, setTradingStats] = useState<TradingEngineStats | null>(null);
+  const [marketData, setMarketData] = useState<MarketData | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   
   const currentBot = botId ? bots.find(bot => bot.id === botId) : bots[0];
 
   useEffect(() => {
     if (currentBot?.id) {
       fetchTrades(currentBot.id);
+      loadTradingData();
     }
   }, [currentBot?.id, fetchTrades]);
 
-  const getStatusColor = (status: MarketMakerBot['status']) => {
-    switch (status) {
-      case 'active': return 'bg-green-500';
-      case 'paused': return 'bg-yellow-500';
-      case 'stopped': return 'bg-red-500';
-      case 'completed': return 'bg-blue-500';
-      default: return 'bg-gray-500';
+  const loadTradingData = async () => {
+    if (!currentBot) return;
+    
+    try {
+      const [stats, market] = await Promise.all([
+        getTradingStats(currentBot.id),
+        getMarketData(currentBot.token_mint_address)
+      ]);
+      
+      setTradingStats(stats);
+      setMarketData(market);
+    } catch (error) {
+      console.error('Failed to load trading data:', error);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadTradingData();
+      if (currentBot?.id) {
+        await fetchTrades(currentBot.id);
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleManualTrade = async () => {
+    if (!currentBot) return;
+    
+    try {
+      await executeManualTrade(currentBot.id);
+      await loadTradingData();
+      await fetchTrades(currentBot.id);
+    } catch (error) {
+      console.error('Manual trade failed:', error);
     }
   };
 
@@ -45,6 +91,10 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
     
     try {
       await updateBotStatus(currentBot.id, newStatus);
+      if (newStatus === 'active') {
+        // Start the scheduler when bot becomes active
+        await startScheduler();
+      }
     } catch (error) {
       console.error('Failed to update bot status:', error);
     }
@@ -66,9 +116,19 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
     );
   }
 
+  const getStatusColor = (status: MarketMakerBot['status']) => {
+    switch (status) {
+      case 'active': return 'bg-green-500';
+      case 'paused': return 'bg-yellow-500';
+      case 'stopped': return 'bg-red-500';
+      case 'completed': return 'bg-blue-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Bot Status Card */}
+      {/* Enhanced Bot Status Card */}
       <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
@@ -77,19 +137,30 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
               {currentBot.token_symbol} Market Maker Bot
             </h2>
           </div>
-          <Badge className={`${getStatusColor(currentBot.status)} text-white`}>
-            {currentBot.status.toUpperCase()}
-          </Badge>
+          <div className="flex items-center space-x-3">
+            <Badge className={`${getStatusColor(currentBot.status)} text-white`}>
+              {currentBot.status.toUpperCase()}
+            </Badge>
+            <Button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              variant="outline"
+              size="sm"
+              className="border-purple-300"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white/5 rounded-lg p-4">
             <div className="flex items-center space-x-2 mb-2">
               <TrendingUp className="w-4 h-4 text-green-400" />
               <span className="text-gray-300 text-sm">Total Volume</span>
             </div>
             <p className="text-white font-semibold text-lg">
-              ${(currentBot.total_volume || 0).toLocaleString()}
+              ${(tradingStats?.totalVolume || currentBot.total_volume || 0).toLocaleString()}
             </p>
           </div>
 
@@ -99,33 +170,57 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
               <span className="text-gray-300 text-sm">Total Trades</span>
             </div>
             <p className="text-white font-semibold text-lg">
-              {(currentBot.total_trades || 0).toLocaleString()}
+              {(tradingStats?.totalTrades || currentBot.total_trades || 0).toLocaleString()}
+            </p>
+          </div>
+
+          <div className="bg-white/5 rounded-lg p-4">
+            <div className="flex items-center space-x-2 mb-2">
+              <Target className="w-4 h-4 text-purple-400" />
+              <span className="text-gray-300 text-sm">Avg Price</span>
+            </div>
+            <p className="text-white font-semibold text-lg">
+              ${(tradingStats?.averagePrice || 0).toFixed(6)}
             </p>
           </div>
 
           <div className="bg-white/5 rounded-lg p-4">
             <div className="flex items-center space-x-2 mb-2">
               <Clock className="w-4 h-4 text-yellow-400" />
-              <span className="text-gray-300 text-sm">Duration</span>
+              <span className="text-gray-300 text-sm">Time Left</span>
             </div>
             <p className="text-white font-semibold text-lg">
-              {currentBot.duration_hours}h
-            </p>
-          </div>
-
-          <div className="bg-white/5 rounded-lg p-4">
-            <div className="flex items-center space-x-2 mb-2">
-              <DollarSign className="w-4 h-4 text-purple-400" />
-              <span className="text-gray-300 text-sm">Package Size</span>
-            </div>
-            <p className="text-white font-semibold text-lg">
-              {currentBot.package_size}
+              {tradingStats?.hoursRemaining ? `${tradingStats.hoursRemaining.toFixed(1)}h` : `${currentBot.duration_hours}h`}
             </p>
           </div>
         </div>
 
-        {/* Control Buttons */}
-        <div className="flex space-x-3">
+        {/* Market Data Section */}
+        {marketData && (
+          <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-lg p-4 mb-6 border border-blue-500/30">
+            <h3 className="text-white font-semibold mb-3 flex items-center space-x-2">
+              <Activity className="w-4 h-4 text-blue-400" />
+              <span>Live Market Data</span>
+            </h3>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-blue-300 text-sm">Current Price</p>
+                <p className="text-white font-semibold">${marketData.price.toFixed(6)}</p>
+              </div>
+              <div>
+                <p className="text-blue-300 text-sm">Liquidity</p>
+                <p className="text-white font-semibold">${marketData.liquidity.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-blue-300 text-sm">24h Volume</p>
+                <p className="text-white font-semibold">${marketData.volume24h.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Enhanced Control Buttons */}
+        <div className="flex flex-wrap gap-3">
           {currentBot.status === 'pending' && (
             <Button
               onClick={() => handleStatusChange('active')}
@@ -137,13 +232,29 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
           )}
           
           {currentBot.status === 'active' && (
-            <Button
-              onClick={() => handleStatusChange('paused')}
-              className="bg-yellow-500 hover:bg-yellow-600 text-white"
-            >
-              <Pause className="w-4 h-4 mr-2" />
-              Pause Bot
-            </Button>
+            <>
+              <Button
+                onClick={() => handleStatusChange('paused')}
+                className="bg-yellow-500 hover:bg-yellow-600 text-white"
+              >
+                <Pause className="w-4 h-4 mr-2" />
+                Pause Bot
+              </Button>
+              
+              <Button
+                onClick={handleManualTrade}
+                disabled={engineLoading}
+                variant="outline"
+                className="border-blue-300 text-blue-300 hover:bg-blue-300 hover:text-blue-900"
+              >
+                {engineLoading ? (
+                  <div className="w-4 h-4 border-2 border-blue-300/30 border-t-blue-300 rounded-full animate-spin mr-2"></div>
+                ) : (
+                  <Zap className="w-4 h-4 mr-2" />
+                )}
+                Execute Trade
+              </Button>
+            </>
           )}
           
           {currentBot.status === 'paused' && (
@@ -168,9 +279,16 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
         </div>
       </Card>
 
-      {/* Recent Trades */}
+      {/* Enhanced Recent Trades */}
       <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 p-6">
-        <h3 className="text-xl font-bold text-white mb-4">Recent Trades</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-white">Recent Trades</h3>
+          {tradingStats?.lastTradeTime && (
+            <p className="text-gray-400 text-sm">
+              Last trade: {new Date(tradingStats.lastTradeTime).toLocaleTimeString()}
+            </p>
+          )}
+        </div>
         {trades.length > 0 ? (
           <div className="space-y-2">
             {trades.slice(0, 10).map((trade) => (
@@ -180,11 +298,14 @@ const MarketMakerDashboard: React.FC<MarketMakerDashboardProps> = ({ botId }) =>
                     {trade.trade_type.toUpperCase()}
                   </Badge>
                   <span className="text-white">
-                    {trade.amount.toFixed(6)} {currentBot.token_symbol}
+                    {Number(trade.amount).toFixed(6)} {currentBot.token_symbol}
+                  </span>
+                  <span className="text-gray-400 text-sm">
+                    {trade.transaction_signature.startsWith('sim_') ? '(Simulated)' : ''}
                   </span>
                 </div>
                 <div className="text-right">
-                  <p className="text-white">${trade.price.toFixed(6)}</p>
+                  <p className="text-white">${Number(trade.price).toFixed(6)}</p>
                   <p className="text-gray-400 text-xs">
                     {new Date(trade.created_at).toLocaleTimeString()}
                   </p>
