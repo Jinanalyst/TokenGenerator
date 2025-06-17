@@ -24,12 +24,13 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useSolana } from '../hooks/useSolana';
-import { supabase } from '@/integrations/supabase/client';
+import { useMarketMaker } from '../hooks/useMarketMaker';
 
 const MarketMaker = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { createBot } = useMarketMaker();
   
   // Token data from URL params
   const tokenMintAddress = searchParams.get('mint');
@@ -116,26 +117,20 @@ const MarketMaker = () => {
       console.log(`Creating payment of ${price} SOL to ${feeRecipientAddress}`);
       
       // Store bot configuration in database
-      const { data, error } = await supabase
-        .from('market_maker_bots')
-        .insert({
-          user_id: 'placeholder-user-id', // This would come from auth context
-          token_mint_address: tokenMintAddress,
-          token_symbol: tokenSymbol!,
-          token_name: tokenName!,
-          package_size: botConfig.packageSize,
-          payment_amount: price,
-          volume_target: botConfig.volumeTarget,
-          price_min: botConfig.priceMin,
-          price_max: botConfig.priceMax,
-          trade_frequency: botConfig.tradeFrequency,
-          duration_hours: botConfig.duration,
-          status: 'pending'
-        });
-
-      if (error) {
-        throw error;
-      }
+      const botData = await createBot({
+        user_id: 'placeholder-user-id', // This would come from auth context
+        token_mint_address: tokenMintAddress,
+        token_symbol: tokenSymbol!,
+        token_name: tokenName!,
+        package_size: botConfig.packageSize,
+        payment_amount: price,
+        volume_target: botConfig.volumeTarget,
+        price_min: botConfig.priceMin,
+        price_max: botConfig.priceMax,
+        trade_frequency: botConfig.tradeFrequency,
+        duration_hours: botConfig.duration,
+        status: 'pending'
+      });
 
       toast({
         title: "Market Maker Bot Created! 🤖",
@@ -143,7 +138,7 @@ const MarketMaker = () => {
       });
 
       // Navigate to bot dashboard
-      navigate(`/market-maker/dashboard?botId=${data[0]?.id}`);
+      navigate(`/market-maker/dashboard?botId=${botData.id}`);
       
     } catch (error) {
       console.error('Bot creation failed:', error);

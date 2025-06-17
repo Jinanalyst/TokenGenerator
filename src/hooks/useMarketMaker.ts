@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { Tables, TablesInsert } from '@/integrations/supabase/types';
 
 export interface MarketMakerBot {
   id: string;
@@ -36,6 +37,18 @@ export interface MarketMakerTrade {
   created_at: string;
 }
 
+// Helper function to convert database row to MarketMakerBot
+const convertToMarketMakerBot = (dbBot: Tables<'market_maker_bots'>): MarketMakerBot => ({
+  ...dbBot,
+  status: dbBot.status as MarketMakerBot['status']
+});
+
+// Helper function to convert database row to MarketMakerTrade
+const convertToMarketMakerTrade = (dbTrade: Tables<'market_maker_trades'>): MarketMakerTrade => ({
+  ...dbTrade,
+  trade_type: dbTrade.trade_type as MarketMakerTrade['trade_type']
+});
+
 export const useMarketMaker = () => {
   const [bots, setBots] = useState<MarketMakerBot[]>([]);
   const [trades, setTrades] = useState<MarketMakerTrade[]>([]);
@@ -51,7 +64,7 @@ export const useMarketMaker = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setBots(data || []);
+      setBots((data || []).map(convertToMarketMakerBot));
     } catch (error) {
       console.error('Error fetching bots:', error);
       toast({
@@ -73,13 +86,13 @@ export const useMarketMaker = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setTrades(data || []);
+      setTrades((data || []).map(convertToMarketMakerTrade));
     } catch (error) {
       console.error('Error fetching trades:', error);
     }
   };
 
-  const createBot = async (botConfig: Partial<MarketMakerBot>) => {
+  const createBot = async (botConfig: TablesInsert<'market_maker_bots'>) => {
     try {
       const { data, error } = await supabase
         .from('market_maker_bots')
@@ -89,8 +102,9 @@ export const useMarketMaker = () => {
 
       if (error) throw error;
       
-      setBots(prev => [data, ...prev]);
-      return data;
+      const newBot = convertToMarketMakerBot(data);
+      setBots(prev => [newBot, ...prev]);
+      return newBot;
     } catch (error) {
       console.error('Error creating bot:', error);
       throw error;
@@ -108,11 +122,12 @@ export const useMarketMaker = () => {
 
       if (error) throw error;
       
+      const updatedBot = convertToMarketMakerBot(data);
       setBots(prev => prev.map(bot => 
-        bot.id === botId ? { ...bot, status } : bot
+        bot.id === botId ? updatedBot : bot
       ));
       
-      return data;
+      return updatedBot;
     } catch (error) {
       console.error('Error updating bot status:', error);
       throw error;
@@ -134,11 +149,12 @@ export const useMarketMaker = () => {
 
       if (error) throw error;
       
+      const updatedBot = convertToMarketMakerBot(data);
       setBots(prev => prev.map(bot => 
-        bot.id === botId ? data : bot
+        bot.id === botId ? updatedBot : bot
       ));
       
-      return data;
+      return updatedBot;
     } catch (error) {
       console.error('Error processing payment:', error);
       throw error;
