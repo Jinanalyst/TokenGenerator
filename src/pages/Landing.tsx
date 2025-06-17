@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -57,9 +56,11 @@ const Landing = () => {
                     <ArrowRight className="w-5 h-5" />
                   </Button>
                 </Link>
-                <Button variant="outline" size="lg" className="border-purple-300 text-purple-300 hover:bg-purple-300 hover:text-purple-900 px-8 py-4 text-lg font-semibold rounded-full backdrop-blur-sm">
-                  Learn More
-                </Button>
+                <Link to="/app">
+                  <Button variant="outline" size="lg" className="border-purple-300 text-purple-300 hover:bg-purple-300 hover:text-purple-900 px-8 py-4 text-lg font-semibold rounded-full backdrop-blur-sm">
+                    Learn More
+                  </Button>
+                </Link>
               </div>
 
               {/* Feature Cards */}
