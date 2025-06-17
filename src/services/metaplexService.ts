@@ -60,6 +60,7 @@ export class MetaplexService {
     const metadataAddress = MetaplexService.getMetadataAddress(mintPublicKey);
 
     const createMetadataInstruction = createMetadataAccountV3(
+      this.connection,
       {
         metadata: metadataAddress,
         mint: mintPublicKey,
