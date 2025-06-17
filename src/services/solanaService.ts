@@ -15,7 +15,12 @@ import {
   AuthorityType,
   setAuthority,
   TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  createInitializeMintInstruction,
+  createMintToInstruction,
+  createSetAuthorityInstruction
 } from '@solana/spl-token';
 
 export interface TokenMetadata {
@@ -72,8 +77,10 @@ export class SolanaService {
     try {
       console.log('Creating token with metadata:', metadata);
 
-      // Create a keypair from the wallet for signing transactions
-      const walletPublicKey = new PublicKey(wallet.publicKey);
+      // Ensure wallet publicKey is a PublicKey object
+      const walletPublicKey = typeof wallet.publicKey === 'string' 
+        ? new PublicKey(wallet.publicKey) 
+        : wallet.publicKey;
       
       // Check if payer has enough balance for fee + transaction costs
       const payerBalance = await this.getBalance(walletPublicKey);
@@ -83,7 +90,7 @@ export class SolanaService {
         throw new Error(`Insufficient balance. Need at least ${requiredBalance} SOL, but have ${payerBalance} SOL`);
       }
 
-      // Create and send fee payment transaction
+      // Step 1: Create and send fee payment transaction
       console.log('Sending token creation fee of 0.02 SOL...');
       const feeTransaction = new Transaction().add(
         SystemProgram.transfer({
@@ -93,78 +100,78 @@ export class SolanaService {
         })
       );
 
-      // Get recent blockhash
       const { blockhash } = await this.connection.getLatestBlockhash();
       feeTransaction.recentBlockhash = blockhash;
       feeTransaction.feePayer = walletPublicKey;
 
-      // Sign and send fee transaction
       const signedFeeTransaction = await wallet.adapter.signTransaction(feeTransaction);
       const feeSignature = await this.connection.sendRawTransaction(signedFeeTransaction.serialize());
       await this.connection.confirmTransaction(feeSignature);
-
       console.log('Fee payment confirmed:', feeSignature);
 
-      // Create mint account
+      // Step 2: Create mint account and initialize
       const mintKeypair = Keypair.generate();
+      const mintRent = await this.connection.getMinimumBalanceForRentExemption(82);
       
-      // Create mint transaction
-      const mintTransaction = new Transaction();
-      const createMintInstruction = SystemProgram.createAccount({
-        fromPubkey: walletPublicKey,
-        newAccountPubkey: mintKeypair.publicKey,
-        space: 82, // Size for mint account
-        lamports: await this.connection.getMinimumBalanceForRentExemption(82),
-        programId: TOKEN_PROGRAM_ID,
-      });
-
-      mintTransaction.add(createMintInstruction);
-
-      // Initialize mint
-      const { createInitializeMintInstruction } = await import('@solana/spl-token');
-      const initMintInstruction = createInitializeMintInstruction(
-        mintKeypair.publicKey,
-        metadata.decimals,
-        walletPublicKey, // mint authority
-        walletPublicKey  // freeze authority
+      const createMintTransaction = new Transaction().add(
+        SystemProgram.createAccount({
+          fromPubkey: walletPublicKey,
+          newAccountPubkey: mintKeypair.publicKey,
+          space: 82,
+          lamports: mintRent,
+          programId: TOKEN_PROGRAM_ID,
+        }),
+        createInitializeMintInstruction(
+          mintKeypair.publicKey,
+          metadata.decimals,
+          walletPublicKey, // mint authority
+          walletPublicKey  // freeze authority
+        )
       );
 
-      mintTransaction.add(initMintInstruction);
-
-      // Get recent blockhash and set fee payer
       const { blockhash: mintBlockhash } = await this.connection.getLatestBlockhash();
-      mintTransaction.recentBlockhash = mintBlockhash;
-      mintTransaction.feePayer = walletPublicKey;
+      createMintTransaction.recentBlockhash = mintBlockhash;
+      createMintTransaction.feePayer = walletPublicKey;
+      createMintTransaction.partialSign(mintKeypair);
 
-      // Sign with both wallet and mint keypair
-      mintTransaction.partialSign(mintKeypair);
-      const signedMintTransaction = await wallet.adapter.signTransaction(mintTransaction);
+      const signedMintTransaction = await wallet.adapter.signTransaction(createMintTransaction);
       const mintSignature = await this.connection.sendRawTransaction(signedMintTransaction.serialize());
       await this.connection.confirmTransaction(mintSignature);
-
       console.log('Mint created:', mintKeypair.publicKey.toBase58());
 
-      // Create associated token account
-      const tokenAccount = await getOrCreateAssociatedTokenAccount(
-        this.connection,
-        mintKeypair, // This will use the mintKeypair for signing, but we need to handle this differently
+      // Step 3: Create associated token account
+      const associatedTokenAddress = await getAssociatedTokenAddress(
         mintKeypair.publicKey,
         walletPublicKey
       );
 
-      console.log('Token account created:', tokenAccount.address.toBase58());
-
-      // Mint tokens - we need to create this transaction manually since we're using wallet adapter
-      const mintToTransaction = new Transaction();
-      const { createMintToInstruction } = await import('@solana/spl-token');
-      const mintToInstruction = createMintToInstruction(
-        mintKeypair.publicKey,
-        tokenAccount.address,
-        walletPublicKey, // mint authority
-        metadata.supply * Math.pow(10, metadata.decimals)
+      const createTokenAccountTransaction = new Transaction().add(
+        createAssociatedTokenAccountInstruction(
+          walletPublicKey, // payer
+          associatedTokenAddress, // associated token account
+          walletPublicKey, // owner
+          mintKeypair.publicKey // mint
+        )
       );
 
-      mintToTransaction.add(mintToInstruction);
+      const { blockhash: tokenAccountBlockhash } = await this.connection.getLatestBlockhash();
+      createTokenAccountTransaction.recentBlockhash = tokenAccountBlockhash;
+      createTokenAccountTransaction.feePayer = walletPublicKey;
+
+      const signedTokenAccountTransaction = await wallet.adapter.signTransaction(createTokenAccountTransaction);
+      const tokenAccountSignature = await this.connection.sendRawTransaction(signedTokenAccountTransaction.serialize());
+      await this.connection.confirmTransaction(tokenAccountSignature);
+      console.log('Token account created:', associatedTokenAddress.toBase58());
+
+      // Step 4: Mint tokens to the associated token account
+      const mintToTransaction = new Transaction().add(
+        createMintToInstruction(
+          mintKeypair.publicKey,
+          associatedTokenAddress,
+          walletPublicKey, // mint authority
+          metadata.supply * Math.pow(10, metadata.decimals)
+        )
+      );
 
       const { blockhash: mintToBlockhash } = await this.connection.getLatestBlockhash();
       mintToTransaction.recentBlockhash = mintToBlockhash;
@@ -173,33 +180,34 @@ export class SolanaService {
       const signedMintToTransaction = await wallet.adapter.signTransaction(mintToTransaction);
       const mintToSignature = await this.connection.sendRawTransaction(signedMintToTransaction.serialize());
       await this.connection.confirmTransaction(mintToSignature);
-
       console.log('Tokens minted, signature:', mintToSignature);
 
-      // Handle authority revocations if requested
+      // Step 5: Handle authority revocations if requested
       if (metadata.revokeMintAuthority || metadata.revokeFreezeAuthority) {
         const revokeTransaction = new Transaction();
 
         if (metadata.revokeMintAuthority) {
-          const { createSetAuthorityInstruction } = await import('@solana/spl-token');
-          const revokeMintInstruction = createSetAuthorityInstruction(
-            mintKeypair.publicKey,
-            walletPublicKey,
-            AuthorityType.MintTokens,
-            null
+          console.log('Revoking mint authority...');
+          revokeTransaction.add(
+            createSetAuthorityInstruction(
+              mintKeypair.publicKey,
+              walletPublicKey, // current authority
+              AuthorityType.MintTokens,
+              null // new authority (null = revoke)
+            )
           );
-          revokeTransaction.add(revokeMintInstruction);
         }
 
         if (metadata.revokeFreezeAuthority) {
-          const { createSetAuthorityInstruction } = await import('@solana/spl-token');
-          const revokeFreezeInstruction = createSetAuthorityInstruction(
-            mintKeypair.publicKey,
-            walletPublicKey,
-            AuthorityType.FreezeAccount,
-            null
+          console.log('Revoking freeze authority...');
+          revokeTransaction.add(
+            createSetAuthorityInstruction(
+              mintKeypair.publicKey,
+              walletPublicKey, // current authority
+              AuthorityType.FreezeAccount,
+              null // new authority (null = revoke)
+            )
           );
-          revokeTransaction.add(revokeFreezeInstruction);
         }
 
         if (revokeTransaction.instructions.length > 0) {
@@ -210,7 +218,6 @@ export class SolanaService {
           const signedRevokeTransaction = await wallet.adapter.signTransaction(revokeTransaction);
           const revokeSignature = await this.connection.sendRawTransaction(signedRevokeTransaction.serialize());
           await this.connection.confirmTransaction(revokeSignature);
-
           console.log('Authorities revoked:', revokeSignature);
         }
       }
@@ -219,7 +226,7 @@ export class SolanaService {
 
       return {
         mintAddress: mintKeypair.publicKey.toBase58(),
-        tokenAccountAddress: tokenAccount.address.toBase58(),
+        tokenAccountAddress: associatedTokenAddress.toBase58(),
         transactionSignature: mintToSignature,
         explorerUrl
       };
