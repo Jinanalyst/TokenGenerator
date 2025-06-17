@@ -27,9 +27,19 @@ const ChatInterface = () => {
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [currentTokenData, setCurrentTokenData] = useState(null);
+  const [currentTokenData, setCurrentTokenData] = useState({
+    name: 'Your Token',
+    symbol: 'TOKEN',
+    supply: 1000000,
+    decimals: 9,
+    network: 'devnet',
+    revokeMintAuthority: false,
+    revokeFreezeAuthority: false,
+    revokeUpdateAuthority: false,
+    image: ''
+  });
   const [wallet, setWallet] = useState(null);
-  const [showPanels, setShowPanels] = useState(false);
+  const [shouldShowPanel, setShouldShowPanel] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -71,10 +81,19 @@ const ChatInterface = () => {
   const generateAIResponse = (userInput: string) => {
     const input = userInput.toLowerCase();
 
+    // Check if this is a token-related conversation that should show the panel
+    const tokenRelatedKeywords = ['token', 'create', 'supply', 'symbol', 'name', 'mint', 'authority', 'mainnet', 'devnet', 'launch', 'deploy'];
+    const isTokenRelated = tokenRelatedKeywords.some(keyword => input.includes(keyword));
+
+    if (isTokenRelated && !shouldShowPanel) {
+      setShouldShowPanel(true);
+    }
+
     if (input.includes('wallet') && !wallet) {
       return {
         content: "I see you're asking about wallet connection! Please use the wallet connection panel above to connect your Phantom wallet. Once connected, you'll be able to create real Solana tokens with all the advanced features.",
-        tokenData: null
+        tokenData: null,
+        showPanel: isTokenRelated
       };
     }
 
@@ -93,7 +112,8 @@ const ChatInterface = () => {
 
         return {
           content: `Perfect! I've updated your token supply to **${supplyAmount.toLocaleString()}** tokens.\n\n🪙 **Current Token Details:**\n• Name: ${updatedTokenData.name}\n• Symbol: ${updatedTokenData.symbol}\n• Supply: ${updatedTokenData.supply.toLocaleString()}\n• Network: ${updatedTokenData.network}\n\nYou can also set authority controls using the checkboxes below, or just say "create it" to deploy!`,
-          tokenData: updatedTokenData
+          tokenData: updatedTokenData,
+          showPanel: true
         };
       }
     }
@@ -101,21 +121,24 @@ const ChatInterface = () => {
     if (input.includes('authority') || input.includes('revoke') || input.includes('mint') || input.includes('freeze')) {
       return {
         content: "Great question about token authorities! 🔐\n\n**Authority Types:**\n• **Mint Authority**: Can create new tokens - check to revoke this\n• **Freeze Authority**: Can freeze token accounts - check to revoke this  \n• **Update Authority**: Can modify token metadata - check to revoke this\n\n**Why Revoke Authorities?**\n• Increases trust and security\n• Makes tokens more decentralized\n• Cannot be undone once revoked\n\nUse the checkboxes in the panel below to select which authorities to revoke. The green checkmarks will show your selections!",
-        tokenData: null
+        tokenData: null,
+        showPanel: true
       };
     }
 
     if (input.includes('liquidity') || input.includes('pool') || input.includes('raydium')) {
       return {
         content: "Awesome! Adding liquidity is crucial for token trading. 💧\n\nAfter creating your token, you can:\n• Create a liquidity pool on Raydium\n• Set the initial price ratio\n• Earn fees from trades\n• Provide better trading experience\n\nI'll show you the liquidity pool creation page once your token is ready!",
-        tokenData: null
+        tokenData: null,
+        showPanel: true
       };
     }
 
     if (input.includes('create') || input.includes('token') || input.includes('generate')) {
       return {
         content: "Awesome! I'm ready to help you create a real token. Let me gather some details:\n\n**Tell me:**\n• What should we call your token?\n• What's the symbol (like BTC, ETH)?\n• How many tokens? (e.g., '1 million tokens')\n• Mainnet or devnet?\n• Any authority controls needed?\n\nJust describe what you want naturally!",
-        tokenData: null
+        tokenData: null,
+        showPanel: true
       };
     }
 
@@ -127,7 +150,8 @@ const ChatInterface = () => {
       };
       return {
         content: `Perfect! I'll set this up for Solana ${network}. ${network === 'mainnet' ? '⚠️ Remember mainnet uses real SOL!' : '✅ Devnet is perfect for testing!'}\n\nNow, what else would you like to configure for your token?`,
-        tokenData: updatedTokenData
+        tokenData: updatedTokenData,
+        showPanel: true
       };
     }
 
@@ -144,14 +168,16 @@ const ChatInterface = () => {
 
       return {
         content: `Great! I've got the details for your token:\n\n🪙 **Name**: ${tokenData.name || 'Your Token'}\n🏷️ **Symbol**: ${tokenData.symbol || 'TOKEN'}\n📊 **Supply**: ${tokenData.supply.toLocaleString()}\n🌐 **Network**: ${tokenData.network}\n\nLooks good? You can adjust the authority settings below or say "create it" to deploy!`,
-        tokenData
+        tokenData,
+        showPanel: true
       };
     }
 
     if (input.includes('create it') || input.includes("let's go") || input.includes('deploy') || input.includes('launch')) {
       return {
         content: "🚀 Perfect! Your token configuration is ready for deployment!\n\n✨ **Next Steps:**\n1. Review your token details below\n2. Set authority controls (checkboxes)\n3. Click 'Create Real Token'\n4. Confirm in your wallet\n\n*This creates a real token on the Solana blockchain!*",
-        tokenData: currentTokenData
+        tokenData: currentTokenData,
+        showPanel: true
       };
     }
 
@@ -165,7 +191,8 @@ const ChatInterface = () => {
 
     return {
       content: responses[Math.floor(Math.random() * responses.length)],
-      tokenData: null
+      tokenData: null,
+      showPanel: isTokenRelated
     };
   };
 
@@ -197,7 +224,9 @@ const ChatInterface = () => {
       setMessages(prev => [...prev, aiMessage]);
       if (aiResponse.tokenData) {
         setCurrentTokenData(aiResponse.tokenData);
-        setShowPanels(true);
+      }
+      if (aiResponse.showPanel) {
+        setShouldShowPanel(true);
       }
       setIsTyping(false);
     }, 1500);
@@ -301,8 +330,8 @@ const ChatInterface = () => {
         </div>
       </Card>
 
-      {/* Token Creation Panel - Show after AI responds with token data */}
-      {showPanels && currentTokenData && (
+      {/* Token Creation Panel - Show when shouldShowPanel is true */}
+      {shouldShowPanel && (
         <div className="mt-6">
           <TokenCreationPanel 
             tokenData={currentTokenData} 
