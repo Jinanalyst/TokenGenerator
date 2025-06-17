@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,16 +45,6 @@ const ChatInterface = () => {
     setCurrentTokenData(newTokenData);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setInputValue(value);
-    
-    // Show panels when user starts typing
-    if (value.trim() && !showPanels) {
-      setShowPanels(true);
-    }
-  };
-
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
@@ -85,7 +76,7 @@ const ChatInterface = () => {
       }
       setIsTyping(false);
       
-      // Show panels after AI responds (instead of when typing)
+      // Show panels after AI responds with token data or after first interaction
       if (!showPanels) {
         setShowPanels(true);
       }
@@ -326,6 +317,130 @@ const ChatInterface = () => {
       )}
     </div>
   );
+};
+
+const generateAIResponse = (userInput: string) => {
+  const input = userInput.toLowerCase();
+
+  if (input.includes('wallet') && !wallet) {
+    return {
+      content: "I see you're asking about wallet connection! Please use the wallet connection panel above to connect your Phantom wallet. Once connected, you'll be able to create real Solana tokens with all the advanced features.",
+      tokenData: null
+    };
+  }
+
+  // Enhanced supply handling
+  if (input.includes('supply') || input.includes('million') || input.includes('billion') || /\d+/.test(input)) {
+    const supplyAmount = extractTokenSupply(userInput);
+    if (supplyAmount) {
+      const updatedTokenData = {
+        ...currentTokenData,
+        supply: supplyAmount,
+        name: currentTokenData?.name || extractTokenName(userInput) || 'Your Token',
+        symbol: currentTokenData?.symbol || extractTokenSymbol(userInput) || 'TOKEN',
+        decimals: 9,
+        network: currentTokenData?.network || 'devnet'
+      };
+
+      return {
+        content: `Perfect! I've updated your token supply to **${supplyAmount.toLocaleString()}** tokens.\n\n🪙 **Current Token Details:**\n• Name: ${updatedTokenData.name}\n• Symbol: ${updatedTokenData.symbol}\n• Supply: ${updatedTokenData.supply.toLocaleString()}\n• Network: ${updatedTokenData.network}\n\nYou can also set authority controls using the checkboxes below, or just say "create it" to deploy!`,
+        tokenData: updatedTokenData
+      };
+    }
+  }
+
+  if (input.includes('authority') || input.includes('revoke') || input.includes('mint') || input.includes('freeze')) {
+    return {
+      content: "Great question about token authorities! 🔐\n\n**Authority Types:**\n• **Mint Authority**: Can create new tokens - check to revoke this\n• **Freeze Authority**: Can freeze token accounts - check to revoke this  \n• **Update Authority**: Can modify token metadata - check to revoke this\n\n**Why Revoke Authorities?**\n• Increases trust and security\n• Makes tokens more decentralized\n• Cannot be undone once revoked\n\nUse the checkboxes in the panel below to select which authorities to revoke. The green checkmarks will show your selections!",
+      tokenData: null
+    };
+  }
+
+  if (input.includes('liquidity') || input.includes('pool') || input.includes('raydium')) {
+    return {
+      content: "Awesome! Adding liquidity is crucial for token trading. 💧\n\nAfter creating your token, you can:\n• Create a liquidity pool on Raydium\n• Set the initial price ratio\n• Earn fees from trades\n• Provide better trading experience\n\nI'll show you the liquidity pool creation page once your token is ready!",
+      tokenData: null
+    };
+  }
+
+  if (input.includes('create') || input.includes('token') || input.includes('generate')) {
+    return {
+      content: "Awesome! I'm ready to help you create a real token. Let me gather some details:\n\n**Tell me:**\n• What should we call your token?\n• What's the symbol (like BTC, ETH)?\n• How many tokens? (e.g., '1 million tokens')\n• Mainnet or devnet?\n• Any authority controls needed?\n\nJust describe what you want naturally!",
+      tokenData: null
+    };
+  }
+
+  if (input.includes('mainnet') || input.includes('devnet')) {
+    const network = input.includes('mainnet') ? 'mainnet' : 'devnet';
+    const updatedTokenData = {
+      ...currentTokenData,
+      network
+    };
+    return {
+      content: `Perfect! I'll set this up for Solana ${network}. ${network === 'mainnet' ? '⚠️ Remember mainnet uses real SOL!' : '✅ Devnet is perfect for testing!'}\n\nNow, what else would you like to configure for your token?`,
+      tokenData: updatedTokenData
+    };
+  }
+
+  // Check if user is providing token details
+  if (input.includes('name') || input.includes('symbol') || /\b[A-Z]{2,5}\b/.test(userInput)) {
+    const tokenData = {
+      ...currentTokenData,
+      name: extractTokenName(userInput) || currentTokenData?.name,
+      symbol: extractTokenSymbol(userInput) || currentTokenData?.symbol,
+      supply: extractTokenSupply(userInput) || currentTokenData?.supply || 1000000,
+      decimals: 9,
+      network: currentTokenData?.network || 'devnet'
+    };
+
+    return {
+      content: `Great! I've got the details for your token:\n\n🪙 **Name**: ${tokenData.name || 'Your Token'}\n🏷️ **Symbol**: ${tokenData.symbol || 'TOKEN'}\n📊 **Supply**: ${tokenData.supply.toLocaleString()}\n🌐 **Network**: ${tokenData.network}\n\nLooks good? You can adjust the authority settings below or say "create it" to deploy!`,
+      tokenData
+    };
+  }
+
+  if (input.includes('create it') || input.includes("let's go") || input.includes('deploy') || input.includes('launch')) {
+    return {
+      content: "🚀 Perfect! Your token configuration is ready for deployment!\n\n✨ **Next Steps:**\n1. Review your token details below\n2. Set authority controls (checkboxes)\n3. Click 'Create Real Token'\n4. Confirm in your wallet\n\n*This creates a real token on the Solana blockchain!*",
+      tokenData: currentTokenData
+    };
+  }
+
+  // Default responses
+  const responses = [
+    "I'm here to help you create real Solana tokens! Try saying something like 'Create a token called MyToken with symbol MT and 5 million supply'",
+    "Ready to build on Solana? Tell me your token name, symbol, and how many tokens you want to create!",
+    "Let's create your token with proper authority controls! What's your token idea?",
+    "I can help with token creation, supply amounts, authority settings, and Raydium liquidity. What would you like to know?"
+  ];
+
+  return {
+    content: responses[Math.floor(Math.random() * responses.length)],
+    tokenData: null
+  };
+};
+
+const extractTokenName = (text: string) => {
+  const nameMatch = text.match(/(?:name[:\s]+|called\s+)([A-Za-z\s]+)/i);
+  return nameMatch ? nameMatch[1].trim() : null;
+};
+
+const extractTokenSymbol = (text: string) => {
+  const symbolMatch = text.match(/(?:symbol[:\s]+|ticker[:\s]+)([A-Z]{2,5})/i) || text.match(/\b([A-Z]{2,5})\b/);
+  return symbolMatch ? symbolMatch[1] : null;
+};
+
+const extractTokenSupply = (text: string) => {
+  // Handle "million", "billion" etc.
+  const millionMatch = text.match(/(\d+(?:\.\d+)?)\s*million/i);
+  if (millionMatch) return Math.floor(parseFloat(millionMatch[1]) * 1000000);
+  
+  const billionMatch = text.match(/(\d+(?:\.\d+)?)\s*billion/i);
+  if (billionMatch) return Math.floor(parseFloat(billionMatch[1]) * 1000000000);
+  
+  // Handle regular numbers
+  const supplyMatch = text.match(/(\d+(?:,\d+)*)\s*(?:tokens?|supply)/i) || text.match(/supply[:\s]*(\d+(?:,\d+)*)/i);
+  return supplyMatch ? parseInt(supplyMatch[1].replace(/,/g, '')) : null;
 };
 
 export default ChatInterface;
