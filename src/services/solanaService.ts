@@ -1,4 +1,3 @@
-
 import { 
   Connection, 
   PublicKey, 
@@ -25,6 +24,7 @@ import {
 import { SecurityConfig } from './securityConfig';
 import { createUserFriendlyError, rateLimiter } from '../utils/errorHandling';
 import { validateTokenName, validateTokenSymbol, validateTokenSupply, validateDecimals } from '../utils/inputValidation';
+import { MetaplexService } from './metaplexService';
 
 export interface TokenMetadata {
   name: string;
@@ -33,6 +33,7 @@ export interface TokenMetadata {
   supply: number;
   description?: string;
   image?: string;
+  imageBlob?: Blob;
   revokeMintAuthority?: boolean;
   revokeFreezeAuthority?: boolean;
   revokeUpdateAuthority?: boolean;
@@ -43,6 +44,7 @@ export interface TokenCreationResult {
   tokenAccountAddress: string;
   transactionSignature: string;
   explorerUrl: string;
+  metadataUri?: string;
 }
 
 export interface TransactionTest {
@@ -56,11 +58,13 @@ export interface TransactionTest {
 export class SolanaService {
   private connection: Connection;
   private network: 'mainnet' | 'devnet';
+  private metaplexService: MetaplexService;
   private static readonly TOKEN_CREATION_FEE = 0.02 * LAMPORTS_PER_SOL;
 
   constructor(rpcUrl: string, network: 'mainnet' | 'devnet') {
     this.connection = new Connection(rpcUrl, 'confirmed');
     this.network = network;
+    this.metaplexService = new MetaplexService(this.connection);
   }
 
   async checkConnection(): Promise<boolean> {
@@ -169,10 +173,213 @@ export class SolanaService {
     }
   }
 
+  async createTokenWithMetadata(
+    wallet: any,
+    metadata: TokenMetadata
+  ): Promise<TokenCreationResult> {
+    try {
+      console.log('Creating token with metadata upload...');
+
+      // First run readiness test
+      const testResult = await this.testTransactionReadiness(wallet, metadata);
+      if (!testResult.success) {
+        throw new Error(testResult.errors?.join(', ') || 'Transaction readiness test failed');
+      }
+
+      const walletPublicKey = typeof wallet.publicKey === 'string' 
+        ? new PublicKey(wallet.publicKey) 
+        : wallet.publicKey;
+
+      const feeRecipient = SecurityConfig.getFeeRecipient();
+
+      // Step 1: Create token mint (same as before)
+      console.log('Creating token mint...');
+      const { blockhash } = await this.connection.getLatestBlockhash('confirmed');
+      const mintKeypair = Keypair.generate();
+      const mintRent = await this.connection.getMinimumBalanceForRentExemption(82);
+
+      const createAndInitTransaction = new Transaction();
+      createAndInitTransaction.recentBlockhash = blockhash;
+      createAndInitTransaction.feePayer = walletPublicKey;
+
+      // Add fee payment
+      createAndInitTransaction.add(
+        SystemProgram.transfer({
+          fromPubkey: walletPublicKey,
+          toPubkey: feeRecipient,
+          lamports: SolanaService.TOKEN_CREATION_FEE,
+        })
+      );
+
+      // Add mint account creation
+      createAndInitTransaction.add(
+        SystemProgram.createAccount({
+          fromPubkey: walletPublicKey,
+          newAccountPubkey: mintKeypair.publicKey,
+          space: 82,
+          lamports: mintRent,
+          programId: TOKEN_PROGRAM_ID,
+        })
+      );
+
+      // Add mint initialization
+      createAndInitTransaction.add(
+        createInitializeMintInstruction(
+          mintKeypair.publicKey,
+          metadata.decimals,
+          walletPublicKey,
+          walletPublicKey
+        )
+      );
+
+      createAndInitTransaction.partialSign(mintKeypair);
+
+      console.log('Requesting wallet signature for mint creation...');
+      const signedCreateTransaction = await wallet.adapter.signTransaction(createAndInitTransaction);
+      const createSignature = await this.connection.sendRawTransaction(signedCreateTransaction.serialize());
+      
+      const createConfirmation = await this.connection.confirmTransaction({
+        signature: createSignature,
+        blockhash: blockhash,
+        lastValidBlockHeight: (await this.connection.getLatestBlockhash()).lastValidBlockHeight
+      });
+
+      if (createConfirmation.value.err) {
+        throw new Error('Mint creation transaction failed');
+      }
+
+      console.log('Mint created successfully:', mintKeypair.publicKey.toBase58());
+
+      // Step 2: Upload metadata and create token account
+      let metadataUri: string | undefined;
+      let metadataTransaction: Transaction | undefined;
+
+      if (metadata.imageBlob) {
+        try {
+          console.log('Uploading metadata to IPFS...');
+          const metadataResult = await this.metaplexService.uploadAndCreateMetadata(
+            metadata.name,
+            metadata.symbol,
+            metadata.description || `${metadata.name} - Created with Solana Token Generator AI`,
+            metadata.imageBlob,
+            mintKeypair.publicKey,
+            walletPublicKey
+          );
+          
+          metadataUri = metadataResult.metadataUri;
+          metadataTransaction = metadataResult.transaction;
+          console.log('Metadata uploaded successfully:', metadataUri);
+        } catch (error) {
+          console.warn('Metadata upload failed, continuing without metadata:', error);
+        }
+      }
+
+      // Step 3: Create token account and mint tokens
+      const { blockhash: mintBlockhash } = await this.connection.getLatestBlockhash('confirmed');
+      
+      const associatedTokenAddress = await getAssociatedTokenAddress(
+        mintKeypair.publicKey,
+        walletPublicKey
+      );
+
+      const mintTransaction = new Transaction();
+      mintTransaction.recentBlockhash = mintBlockhash;
+      mintTransaction.feePayer = walletPublicKey;
+
+      // Add create associated token account
+      mintTransaction.add(
+        createAssociatedTokenAccountInstruction(
+          walletPublicKey,
+          associatedTokenAddress,
+          walletPublicKey,
+          mintKeypair.publicKey
+        )
+      );
+
+      // Add mint to instruction
+      mintTransaction.add(
+        createMintToInstruction(
+          mintKeypair.publicKey,
+          associatedTokenAddress,
+          walletPublicKey,
+          metadata.supply * Math.pow(10, metadata.decimals)
+        )
+      );
+
+      // Add metadata creation if available
+      if (metadataTransaction) {
+        console.log('Adding metadata creation to transaction...');
+        metadataTransaction.instructions.forEach(instruction => {
+          mintTransaction.add(instruction);
+        });
+      }
+
+      // Add authority revocations if requested
+      if (metadata.revokeMintAuthority) {
+        mintTransaction.add(
+          createSetAuthorityInstruction(
+            mintKeypair.publicKey,
+            walletPublicKey,
+            AuthorityType.MintTokens,
+            null
+          )
+        );
+      }
+
+      if (metadata.revokeFreezeAuthority) {
+        mintTransaction.add(
+          createSetAuthorityInstruction(
+            mintKeypair.publicKey,
+            walletPublicKey,
+            AuthorityType.FreezeAccount,
+            null
+          )
+        );
+      }
+
+      // Request final wallet signature
+      console.log('Requesting wallet signature for token creation and metadata...');
+      const signedMintTransaction = await wallet.adapter.signTransaction(mintTransaction);
+      const mintSignature = await this.connection.sendRawTransaction(signedMintTransaction.serialize());
+      
+      // Confirm final transaction
+      const mintConfirmation = await this.connection.confirmTransaction({
+        signature: mintSignature,
+        blockhash: mintBlockhash,
+        lastValidBlockHeight: (await this.connection.getLatestBlockhash()).lastValidBlockHeight
+      });
+
+      if (mintConfirmation.value.err) {
+        throw new Error('Token minting transaction failed');
+      }
+
+      console.log('Token creation with metadata completed successfully!');
+
+      const explorerUrl = this.getExplorerUrl(mintKeypair.publicKey.toBase58());
+
+      return {
+        mintAddress: mintKeypair.publicKey.toBase58(),
+        tokenAccountAddress: associatedTokenAddress.toBase58(),
+        transactionSignature: mintSignature,
+        explorerUrl,
+        metadataUri
+      };
+
+    } catch (error) {
+      console.error('Token creation with metadata failed:', error);
+      const userFriendlyError = createUserFriendlyError(error, 'token_creation');
+      throw new Error(userFriendlyError);
+    }
+  }
+
   async createToken(
     wallet: any,
     metadata: TokenMetadata
   ): Promise<TokenCreationResult> {
+    if (metadata.imageBlob) {
+      return this.createTokenWithMetadata(wallet, metadata);
+    }
+    
     try {
       // First run readiness test
       const testResult = await this.testTransactionReadiness(wallet, metadata);

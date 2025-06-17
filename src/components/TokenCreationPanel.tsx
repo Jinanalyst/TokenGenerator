@@ -69,6 +69,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({});
   const [testResult, setTestResult] = useState<any>(null);
+  const [imageBlob, setImageBlob] = useState<Blob | null>(null);
   
   // Local editable state
   const [editableData, setEditableData] = useState({
@@ -164,6 +165,9 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
       });
       return;
     }
+
+    // Store the actual file blob for IPFS upload
+    setImageBlob(file);
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -261,15 +265,17 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     setIsCreating(true);
     
     try {
-      console.log('Creating real token with validated data:', editableData);
+      console.log('Creating real token with validated data and metadata:', editableData);
 
-      // Create the token using SolanaService with real wallet
+      // Create the token using SolanaService with real wallet and metadata
       const metadata = {
         name: editableData.name,
         symbol: editableData.symbol,
         decimals: editableData.decimals,
         supply: editableData.supply,
+        description: editableData.name ? `${editableData.name} - Created with Solana Token Generator AI` : undefined,
         image: editableData.image,
+        imageBlob: imageBlob || undefined, // Include the actual blob for IPFS upload
         revokeMintAuthority: editableData.revokeMintAuthority,
         revokeFreezeAuthority: editableData.revokeFreezeAuthority,
         revokeUpdateAuthority: editableData.revokeUpdateAuthority
@@ -281,9 +287,14 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
         setTokenResult(result);
         setIsCreated(true);
         
+        let successMessage = `Your ${editableData.symbol} token is now live on Solana ${editableData.network}!`;
+        if (result.metadataUri) {
+          successMessage += ' Logo and metadata have been uploaded to IPFS and will appear in wallets and explorers.';
+        }
+        
         toast({
           title: "Token Created Successfully! 🎉",
-          description: `Your ${editableData.symbol} token is now live on Solana ${editableData.network}!`,
+          description: successMessage,
         });
 
         // If token was created on mainnet, redirect to market maker page after a short delay
@@ -386,11 +397,14 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           </p>
         </div>
 
-        {/* Token Logo Section */}
+        {/* Enhanced Token Logo Section with IPFS info */}
         <div className="bg-white/5 rounded-lg p-4 border border-white/10">
           <div className="flex items-center space-x-2 mb-3">
             <ImageIcon className="w-4 h-4 text-pink-400" />
             <span className="text-pink-200 text-sm">Token Logo</span>
+            <Badge variant="secondary" className="text-xs bg-purple-500/20 text-purple-200">
+              IPFS Upload
+            </Badge>
           </div>
           
           <div className="flex items-center space-x-4">
@@ -425,7 +439,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
                   <span>Upload Logo</span>
                 </label>
                 <p className="text-xs text-gray-400 mt-1">
-                  PNG, JPG, GIF up to 2MB
+                  PNG, JPG, GIF up to 2MB • Uploaded to IPFS for on-chain metadata
                 </p>
               </div>
             )}
@@ -648,7 +662,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           </div>
         )}
 
-        {/* Token Result (if created) with market maker CTA for mainnet */}
+        {/* Token Result (if created) with enhanced metadata info */}
         {isCreated && tokenResult && (
           <div className="space-y-4">
             <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/30">
@@ -669,8 +683,32 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
               <p className="text-green-100 font-mono text-sm break-all">{tokenResult.mintAddress}</p>
             </div>
 
+            {/* Metadata URI display */}
+            {tokenResult.metadataUri && (
+              <div className="bg-purple-500/10 rounded-lg p-4 border border-purple-500/30">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <ImageIcon className="w-4 h-4 text-purple-400" />
+                    <span className="text-purple-300 font-semibold">Metadata URI (IPFS)</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(tokenResult.metadataUri!)}
+                    className="text-purple-300 hover:text-purple-200"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-purple-100 text-sm break-all">{tokenResult.metadataUri}</p>
+                <p className="text-purple-200 text-xs mt-2">
+                  ✅ Token logo and metadata uploaded to IPFS - will appear in wallets and explorers
+                </p>
+              </div>
+            )}
+
             {editableData.network === 'mainnet' && (
-              <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-lg p-4 border border-blue-500/30">
+              <div className="bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg p-4 border border-blue-500/30">
                 <div className="flex items-center space-x-2 mb-2">
                   <Bot className="w-4 h-4 text-blue-400" />
                   <span className="text-blue-300 font-semibold">Next Step: Market Maker Bot</span>
