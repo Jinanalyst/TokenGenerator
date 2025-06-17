@@ -1,3 +1,4 @@
+
 import { 
   Connection, 
   PublicKey, 
@@ -6,9 +7,9 @@ import {
   SYSVAR_RENT_PUBKEY
 } from '@solana/web3.js';
 import {
-  createMetadataAccountV3Instruction,
+  createCreateMetadataAccountV3Instruction,
   CreateMetadataAccountV3InstructionAccounts,
-  CreateMetadataAccountV3InstructionData,
+  CreateMetadataAccountV3InstructionArgs,
   DataV2
 } from '@metaplex-foundation/mpl-token-metadata';
 import { IPFSService } from './ipfsService';
@@ -83,13 +84,13 @@ export class MetaplexService {
       uses: metadata.uses || null,
     };
 
-    const instructionData: CreateMetadataAccountV3InstructionData = {
+    const instructionData: CreateMetadataAccountV3InstructionArgs = {
       data: dataV2,
       isMutable: true,
       collectionDetails: null,
     };
 
-    const createMetadataInstruction = createMetadataAccountV3Instruction(
+    const createMetadataInstruction = createCreateMetadataAccountV3Instruction(
       accounts,
       instructionData
     );
