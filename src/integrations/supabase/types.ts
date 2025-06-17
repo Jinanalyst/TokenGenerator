@@ -51,6 +51,113 @@ export type Database = {
           },
         ]
       }
+      market_maker_bots: {
+        Row: {
+          created_at: string
+          duration_hours: number
+          end_time: string | null
+          id: string
+          package_size: number
+          payment_amount: number
+          payment_signature: string | null
+          price_max: number | null
+          price_min: number | null
+          start_time: string | null
+          status: string
+          token_mint_address: string
+          token_name: string
+          token_symbol: string
+          total_trades: number | null
+          total_volume: number | null
+          trade_frequency: number | null
+          updated_at: string
+          user_id: string
+          volume_target: number | null
+        }
+        Insert: {
+          created_at?: string
+          duration_hours?: number
+          end_time?: string | null
+          id?: string
+          package_size?: number
+          payment_amount: number
+          payment_signature?: string | null
+          price_max?: number | null
+          price_min?: number | null
+          start_time?: string | null
+          status?: string
+          token_mint_address: string
+          token_name: string
+          token_symbol: string
+          total_trades?: number | null
+          total_volume?: number | null
+          trade_frequency?: number | null
+          updated_at?: string
+          user_id: string
+          volume_target?: number | null
+        }
+        Update: {
+          created_at?: string
+          duration_hours?: number
+          end_time?: string | null
+          id?: string
+          package_size?: number
+          payment_amount?: number
+          payment_signature?: string | null
+          price_max?: number | null
+          price_min?: number | null
+          start_time?: string | null
+          status?: string
+          token_mint_address?: string
+          token_name?: string
+          token_symbol?: string
+          total_trades?: number | null
+          total_volume?: number | null
+          trade_frequency?: number | null
+          updated_at?: string
+          user_id?: string
+          volume_target?: number | null
+        }
+        Relationships: []
+      }
+      market_maker_trades: {
+        Row: {
+          amount: number
+          bot_id: string
+          created_at: string
+          id: string
+          price: number
+          trade_type: string
+          transaction_signature: string
+        }
+        Insert: {
+          amount: number
+          bot_id: string
+          created_at?: string
+          id?: string
+          price: number
+          trade_type: string
+          transaction_signature: string
+        }
+        Update: {
+          amount?: number
+          bot_id?: string
+          created_at?: string
+          id?: string
+          price?: number
+          trade_type?: string
+          transaction_signature?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_maker_trades_bot_id_fkey"
+            columns: ["bot_id"]
+            isOneToOne: false
+            referencedRelation: "market_maker_bots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           category: string | null

@@ -23,11 +23,12 @@ import {
   Image as ImageIcon,
   TestTube,
   Eye,
-  AlertCircle
+  AlertCircle,
+  Bot
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useSolana } from '../hooks/useSolana';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   validateTokenName, 
   validateTokenSymbol, 
@@ -83,6 +84,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
   });
   
   const { toast } = useToast();
+  const navigate = useNavigate();
   const solana = useSolana(editableData.network as 'mainnet' | 'devnet');
 
   // Update local state when tokenData changes
@@ -283,6 +285,14 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           title: "Token Created Successfully! 🎉",
           description: `Your ${editableData.symbol} token is now live on Solana ${editableData.network}!`,
         });
+
+        // If token was created on mainnet, redirect to market maker page after a short delay
+        if (editableData.network === 'mainnet') {
+          setTimeout(() => {
+            const marketMakerUrl = `/market-maker?mint=${encodeURIComponent(result.mintAddress)}&symbol=${encodeURIComponent(editableData.symbol)}&name=${encodeURIComponent(editableData.name)}&network=${encodeURIComponent(editableData.network)}`;
+            navigate(marketMakerUrl);
+          }, 2000);
+        }
       }
     } catch (error) {
       console.error('Token creation failed:', error);
@@ -638,7 +648,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           </div>
         )}
 
-        {/* Token Result (if created) with secure external links */}
+        {/* Token Result (if created) with market maker CTA for mainnet */}
         {isCreated && tokenResult && (
           <div className="space-y-4">
             <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/30">
@@ -659,6 +669,28 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
               <p className="text-green-100 font-mono text-sm break-all">{tokenResult.mintAddress}</p>
             </div>
 
+            {editableData.network === 'mainnet' && (
+              <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-lg p-4 border border-blue-500/30">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Bot className="w-4 h-4 text-blue-400" />
+                  <span className="text-blue-300 font-semibold">Next Step: Market Maker Bot</span>
+                </div>
+                <p className="text-blue-200 text-sm mb-3">
+                  Create trading volume and improve market presence for your token with our AI-powered market maker bots.
+                </p>
+                <Button
+                  onClick={() => {
+                    const marketMakerUrl = `/market-maker?mint=${encodeURIComponent(tokenResult.mintAddress)}&symbol=${encodeURIComponent(editableData.symbol)}&name=${encodeURIComponent(editableData.name)}&network=${encodeURIComponent(editableData.network)}`;
+                    navigate(marketMakerUrl);
+                  }}
+                  className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white w-full"
+                >
+                  <Bot className="w-4 h-4 mr-2" />
+                  Launch Market Maker Bot
+                </Button>
+              </div>
+            )}
+
             <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-500/30">
               <div className="flex items-center space-x-2 mb-2">
                 <ExternalLink className="w-4 h-4 text-blue-400" />
@@ -666,7 +698,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
               </div>
               <p className="text-blue-200 text-sm">
                 Your token will appear on DEXScreener automatically once it has trading activity and liquidity pools. 
-                Create a liquidity pool to enable trading!
+                {editableData.network === 'mainnet' ? ' Use our market maker bots to generate initial volume!' : ' Create a liquidity pool to enable trading!'}
               </p>
             </div>
 
@@ -680,12 +712,20 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
                 View on Explorer
               </Button>
               
-              <Link to="/liquidity-pool">
-                <Button className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white w-full sm:w-auto">
-                  <Droplets className="w-4 h-4 mr-2" />
-                  Create Liquidity Pool
-                </Button>
-              </Link>
+              {editableData.network === 'mainnet' ? (
+                <Link to="/liquidity-pool">
+                  <Button className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white w-full sm:w-auto">
+                    <Droplets className="w-4 h-4 mr-2" />
+                    Create Liquidity Pool
+                  </Button>
+                </Link>
+              ) : (
+                <div className="text-center">
+                  <p className="text-yellow-300 text-sm">
+                    Liquidity pools are only available on Mainnet
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
