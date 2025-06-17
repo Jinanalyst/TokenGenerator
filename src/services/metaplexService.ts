@@ -11,7 +11,7 @@ import {
   CreateMetadataAccountV3InstructionAccounts,
   CreateMetadataAccountV3InstructionArgs,
   DataV2,
-  MPL_TOKEN_METADATA_PROGRAM_ID
+  PROGRAM_ID as MPL_TOKEN_METADATA_PROGRAM_ID
 } from '@metaplex-foundation/mpl-token-metadata';
 import { IPFSService } from './ipfsService';
 
@@ -82,7 +82,7 @@ export class MetaplexService {
       uses: metadata.uses || null,
     };
 
-    const args: CreateMetadataAccountV3InstructionArgs = {
+    const args = {
       createMetadataAccountArgsV3: {
         data: dataV2,
         isMutable: true,
