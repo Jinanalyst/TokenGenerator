@@ -1,14 +1,24 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
 
 User-agent: *
 Allow: /
+
+# Sitemap
+Sitemap: https://solana-token-bot-genie.lovable.app/sitemap.xml
+
+# Allow all search engines to index the site
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot  
+Allow: /
+
+# Disallow crawling of admin or private areas (if any exist in future)
+Disallow: /admin/
+Disallow: /private/
+
+# Allow crawling of important pages
+Allow: /app
+Allow: /market-maker
+Allow: /airdrop-site-maker
+Allow: /liquidity-pool
+Allow: /claim/*

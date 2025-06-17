@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -9,6 +8,7 @@ import { useAirdrop } from '@/hooks/useAirdrop';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Gift, CheckCircle, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import SEO from '@/components/SEO';
 
 interface Campaign {
   id: string;
@@ -89,128 +89,191 @@ const ClaimSite = () => {
     }
   };
 
+  const generateSEOData = (campaign: Campaign | null) => {
+    if (!campaign) {
+      return {
+        title: "Token Airdrop Claim Site - Free Cryptocurrency Tokens",
+        description: "Claim your free cryptocurrency tokens from this exclusive airdrop campaign. Limited time offer for eligible wallet addresses.",
+        keywords: "cryptocurrency airdrop, free tokens, claim tokens, solana airdrop"
+      };
+    }
+
+    const isExpired = campaign.finish_date && new Date() > new Date(campaign.finish_date);
+    const status = isExpired ? "Expired" : (campaign.is_active ? "Active" : "Inactive");
+    
+    return {
+      title: `Claim ${campaign.token_name} (${campaign.token_symbol}) - Free Airdrop | ${campaign.campaign_name}`,
+      description: `Claim your free ${campaign.token_name} tokens! Get ${campaign.quantity_per_wallet} ${campaign.token_symbol} tokens per wallet. ${status} airdrop campaign.`,
+      keywords: `${campaign.token_name}, ${campaign.token_symbol}, airdrop, free tokens, claim ${campaign.token_symbol}, cryptocurrency giveaway, solana tokens`,
+      structuredData: {
+        "@context": "https://schema.org",
+        "@type": "Event",
+        "name": campaign.campaign_name,
+        "description": `Free airdrop of ${campaign.token_name} (${campaign.token_symbol}) tokens`,
+        "startDate": campaign.finish_date ? new Date(Date.now() - 86400000).toISOString() : undefined,
+        "endDate": campaign.finish_date,
+        "eventStatus": isExpired ? "https://schema.org/EventCancelled" : "https://schema.org/EventScheduled",
+        "offers": {
+          "@type": "Offer",
+          "name": `${campaign.quantity_per_wallet} ${campaign.token_symbol} tokens`,
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": isExpired ? "https://schema.org/OutOfStock" : "https://schema.org/InStock"
+        }
+      }
+    };
+  };
+
+  const seoData = generateSEOData(campaign);
+
   if (loadingCampaign) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
-        <div className="text-white">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
-          <p>Loading campaign...</p>
+      <>
+        <SEO
+          title="Loading Airdrop Campaign..."
+          description="Loading token airdrop campaign details. Please wait while we fetch your claim information."
+          keywords="token airdrop, cryptocurrency claim, loading"
+        />
+        <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+          <div className="text-white">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+            <p>Loading campaign...</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (!campaign) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-center">Campaign Not Found</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-center text-muted-foreground">
-              This airdrop campaign doesn't exist or has been removed.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <>
+        <SEO
+          title="Airdrop Campaign Not Found - Invalid or Expired Token Claim"
+          description="This token airdrop campaign doesn't exist or has been removed. Check your link or contact the token project for assistance."
+          keywords="airdrop not found, expired campaign, invalid token claim"
+        />
+        <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="text-center">Campaign Not Found</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-center text-muted-foreground">
+                This airdrop campaign doesn't exist or has been removed.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </>
     );
   }
 
   const isExpired = campaign.finish_date && new Date() > new Date(campaign.finish_date);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <Card className="backdrop-blur-lg bg-white/10 border-white/20">
-          <CardHeader className="text-center">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-purple-400 to-blue-400 flex items-center justify-center">
-              <Gift className="w-8 h-8 text-white" />
-            </div>
-            <CardTitle className="text-2xl text-white">
-              {campaign.campaign_name}
-            </CardTitle>
-            <CardDescription className="text-purple-200">
-              Claim your {campaign.token_name} ({campaign.token_symbol}) tokens
-            </CardDescription>
-            <div className="flex justify-center mt-2">
-              <Badge variant={campaign.is_active && !isExpired ? "default" : "secondary"}>
-                {isExpired ? "Expired" : campaign.is_active ? "Active" : "Inactive"}
-              </Badge>
-            </div>
-          </CardHeader>
-          
-          <CardContent>
-            {isClaimed ? (
-              <div className="text-center space-y-4">
-                <CheckCircle className="w-16 h-16 text-green-400 mx-auto" />
-                <div className="text-white">
-                  <h3 className="text-xl font-semibold mb-2">Claim Successful!</h3>
-                  <p className="text-purple-200 mb-4">
-                    You've received {claimResult.quantity} {claimResult.tokenSymbol}
-                  </p>
-                  <div className="bg-white/10 rounded-lg p-3">
-                    <p className="text-sm text-purple-200 mb-1">Transaction Signature:</p>
-                    <p className="text-xs text-white font-mono break-all">
-                      {claimResult.transactionSignature}
+    <>
+      <SEO
+        title={seoData.title}
+        description={seoData.description}
+        keywords={seoData.keywords}
+        canonical={`https://solana-token-bot-genie.lovable.app/claim/${claimId}`}
+        ogTitle={`🎁 ${campaign.campaign_name} - Free ${campaign.token_symbol} Tokens`}
+        ogDescription={`Claim ${campaign.quantity_per_wallet} free ${campaign.token_name} tokens! Limited time airdrop.`}
+        structuredData={seoData.structuredData}
+      />
+      
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <Card className="backdrop-blur-lg bg-white/10 border-white/20">
+            <CardHeader className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-purple-400 to-blue-400 flex items-center justify-center">
+                <Gift className="w-8 h-8 text-white" />
+              </div>
+              <CardTitle className="text-2xl text-white">
+                {campaign.campaign_name}
+              </CardTitle>
+              <CardDescription className="text-purple-200">
+                Claim your {campaign.token_name} ({campaign.token_symbol}) tokens
+              </CardDescription>
+              <div className="flex justify-center mt-2">
+                <Badge variant={campaign.is_active && !isExpired ? "default" : "secondary"}>
+                  {isExpired ? "Expired" : campaign.is_active ? "Active" : "Inactive"}
+                </Badge>
+              </div>
+            </CardHeader>
+            
+            <CardContent>
+              {isClaimed ? (
+                <div className="text-center space-y-4">
+                  <CheckCircle className="w-16 h-16 text-green-400 mx-auto" />
+                  <div className="text-white">
+                    <h3 className="text-xl font-semibold mb-2">Claim Successful!</h3>
+                    <p className="text-purple-200 mb-4">
+                      You've received {claimResult.quantity} {claimResult.tokenSymbol}
                     </p>
+                    <div className="bg-white/10 rounded-lg p-3">
+                      <p className="text-sm text-purple-200 mb-1">Transaction Signature:</p>
+                      <p className="text-xs text-white font-mono break-all">
+                        {claimResult.transactionSignature}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <>
-                <div className="bg-white/10 rounded-lg p-4 mb-6">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-purple-200">Amount per wallet:</span>
-                    <span className="text-white font-semibold">
-                      {campaign.quantity_per_wallet} {campaign.token_symbol}
-                    </span>
-                  </div>
-                  {campaign.finish_date && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-purple-200">Expires:</span>
-                      <span className="text-white">
-                        {new Date(campaign.finish_date).toLocaleDateString()}
+              ) : (
+                <>
+                  <div className="bg-white/10 rounded-lg p-4 mb-6">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-purple-200">Amount per wallet:</span>
+                      <span className="text-white font-semibold">
+                        {campaign.quantity_per_wallet} {campaign.token_symbol}
                       </span>
                     </div>
-                  )}
-                </div>
-
-                {!campaign.is_active || isExpired ? (
-                  <div className="text-center">
-                    <p className="text-red-300">
-                      {isExpired ? "This campaign has expired" : "This campaign is not active"}
-                    </p>
+                    {campaign.finish_date && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-purple-200">Expires:</span>
+                        <span className="text-white">
+                          {new Date(campaign.finish_date).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <form onSubmit={handleClaim} className="space-y-4">
-                    <div>
-                      <Input
-                        type="text"
-                        placeholder="Enter your Solana wallet address"
-                        value={walletAddress}
-                        onChange={(e) => setWalletAddress(e.target.value)}
-                        className="bg-white/10 border-white/20 text-white placeholder:text-purple-200"
-                        required
-                      />
+
+                  {!campaign.is_active || isExpired ? (
+                    <div className="text-center">
+                      <p className="text-red-300">
+                        {isExpired ? "This campaign has expired" : "This campaign is not active"}
+                      </p>
                     </div>
-                    
-                    <Button 
-                      type="submit" 
-                      disabled={isLoading || !walletAddress}
-                      className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
-                    >
-                      {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                      Claim Tokens
-                    </Button>
-                  </form>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+                  ) : (
+                    <form onSubmit={handleClaim} className="space-y-4">
+                      <div>
+                        <Input
+                          type="text"
+                          placeholder="Enter your Solana wallet address"
+                          value={walletAddress}
+                          onChange={(e) => setWalletAddress(e.target.value)}
+                          className="bg-white/10 border-white/20 text-white placeholder:text-purple-200"
+                          required
+                        />
+                      </div>
+                      
+                      <Button 
+                        type="submit" 
+                        disabled={isLoading || !walletAddress}
+                        className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
+                      >
+                        {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        Claim Tokens
+                      </Button>
+                    </form>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
