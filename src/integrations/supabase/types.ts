@@ -9,6 +9,127 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      airdrop_campaigns: {
+        Row: {
+          campaign_name: string
+          claim_site_url: string
+          created_at: string
+          finish_date: string | null
+          id: string
+          is_active: boolean
+          quantity_per_wallet: number
+          token_address: string
+          token_name: string
+          token_symbol: string
+          total_amount_claimable: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          campaign_name: string
+          claim_site_url: string
+          created_at?: string
+          finish_date?: string | null
+          id?: string
+          is_active?: boolean
+          quantity_per_wallet?: number
+          token_address: string
+          token_name: string
+          token_symbol: string
+          total_amount_claimable?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          campaign_name?: string
+          claim_site_url?: string
+          created_at?: string
+          finish_date?: string | null
+          id?: string
+          is_active?: boolean
+          quantity_per_wallet?: number
+          token_address?: string
+          token_name?: string
+          token_symbol?: string
+          total_amount_claimable?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      airdrop_claims: {
+        Row: {
+          campaign_id: string
+          claimed_at: string
+          id: string
+          quantity: number
+          transaction_signature: string | null
+          wallet_address: string
+        }
+        Insert: {
+          campaign_id: string
+          claimed_at?: string
+          id?: string
+          quantity: number
+          transaction_signature?: string | null
+          wallet_address: string
+        }
+        Update: {
+          campaign_id?: string
+          claimed_at?: string
+          id?: string
+          quantity?: number
+          transaction_signature?: string | null
+          wallet_address?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "airdrop_claims_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "airdrop_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      airdrop_wallet_lists: {
+        Row: {
+          campaign_id: string
+          claimed: boolean
+          claimed_at: string | null
+          created_at: string
+          id: string
+          quantity: number
+          wallet_address: string
+        }
+        Insert: {
+          campaign_id: string
+          claimed?: boolean
+          claimed_at?: string | null
+          created_at?: string
+          id?: string
+          quantity?: number
+          wallet_address: string
+        }
+        Update: {
+          campaign_id?: string
+          claimed?: boolean
+          claimed_at?: string | null
+          created_at?: string
+          id?: string
+          quantity?: number
+          wallet_address?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "airdrop_wallet_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "airdrop_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comments: {
         Row: {
           content: string

@@ -68,3 +68,11 @@ verify_jwt = false
 [[functions]]
 slug = "market-maker-scheduler"
 verify_jwt = false
+
+[[functions]]
+slug = "create-airdrop-campaign"
+verify_jwt = false
+
+[[functions]]
+slug = "process-airdrop-claim"
+verify_jwt = false

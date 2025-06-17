@@ -8,6 +8,8 @@ import Landing from "./pages/Landing";
 import Index from "./pages/Index";
 import LiquidityPool from "./pages/LiquidityPool";
 import MarketMaker from "./pages/MarketMaker";
+import AirdropSiteMaker from "./pages/AirdropSiteMaker";
+import ClaimSite from "./pages/ClaimSite";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -23,6 +25,8 @@ const App = () => (
           <Route path="/app" element={<Index />} />
           <Route path="/liquidity-pool" element={<LiquidityPool />} />
           <Route path="/market-maker" element={<MarketMaker />} />
+          <Route path="/airdrop-site-maker" element={<AirdropSiteMaker />} />
+          <Route path="/claim/:claimId" element={<ClaimSite />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
