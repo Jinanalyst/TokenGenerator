@@ -1,4 +1,3 @@
-
 import { 
   Connection, 
   PublicKey, 
@@ -22,6 +21,9 @@ import {
   createMintToInstruction,
   createSetAuthorityInstruction
 } from '@solana/spl-token';
+import { SecurityConfig } from './securityConfig';
+import { createUserFriendlyError, rateLimiter } from '../utils/errorHandling';
+import { validateTokenName, validateTokenSymbol, validateTokenSupply, validateDecimals } from '../utils/inputValidation';
 
 export interface TokenMetadata {
   name: string;
@@ -46,7 +48,6 @@ export class SolanaService {
   private connection: Connection;
   private network: 'mainnet' | 'devnet';
   private static readonly TOKEN_CREATION_FEE = 0.02 * LAMPORTS_PER_SOL; // 0.02 SOL in lamports
-  private static readonly FEE_RECIPIENT = new PublicKey('2zmewxtyL83t6WLkSPpQtdDiK5Nmd5KSn71HKC7TEGcU');
 
   constructor(rpcUrl: string, network: 'mainnet' | 'devnet') {
     this.connection = new Connection(rpcUrl, 'confirmed');
@@ -75,7 +76,40 @@ export class SolanaService {
     metadata: TokenMetadata
   ): Promise<TokenCreationResult> {
     try {
-      console.log('Creating token with metadata:', metadata);
+      // Validate all inputs before proceeding
+      const nameValidation = validateTokenName(metadata.name);
+      if (!nameValidation.isValid) {
+        throw new Error(nameValidation.error);
+      }
+
+      const symbolValidation = validateTokenSymbol(metadata.symbol);
+      if (!symbolValidation.isValid) {
+        throw new Error(symbolValidation.error);
+      }
+
+      const supplyValidation = validateTokenSupply(metadata.supply);
+      if (!supplyValidation.isValid) {
+        throw new Error(supplyValidation.error);
+      }
+
+      const decimalsValidation = validateDecimals(metadata.decimals);
+      if (!decimalsValidation.isValid) {
+        throw new Error(decimalsValidation.error);
+      }
+
+      // Rate limiting check
+      const walletKey = wallet.publicKey?.toString() || 'unknown';
+      if (!rateLimiter.isAllowed(`token_creation_${walletKey}`, 3, 300000)) { // 3 attempts per 5 minutes
+        const remainingTime = Math.ceil(rateLimiter.getRemainingTime(`token_creation_${walletKey}`) / 1000);
+        throw new Error(`Rate limit exceeded. Please wait ${remainingTime} seconds before creating another token`);
+      }
+
+      console.log('Creating token with validated metadata:', {
+        name: metadata.name,
+        symbol: metadata.symbol,
+        decimals: metadata.decimals,
+        supply: metadata.supply
+      });
 
       // Ensure wallet publicKey is a PublicKey object
       const walletPublicKey = typeof wallet.publicKey === 'string' 
@@ -90,12 +124,15 @@ export class SolanaService {
         throw new Error(`Insufficient balance. Need at least ${requiredBalance} SOL, but have ${payerBalance} SOL`);
       }
 
+      // Use secure fee recipient
+      const feeRecipient = SecurityConfig.getFeeRecipient();
+
       // Step 1: Create and send fee payment transaction
       console.log('Sending token creation fee of 0.02 SOL...');
       const feeTransaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: walletPublicKey,
-          toPubkey: SolanaService.FEE_RECIPIENT,
+          toPubkey: feeRecipient,
           lamports: SolanaService.TOKEN_CREATION_FEE,
         })
       );
@@ -233,7 +270,8 @@ export class SolanaService {
 
     } catch (error) {
       console.error('Token creation failed:', error);
-      throw new Error(`Token creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const userFriendlyError = createUserFriendlyError(error, 'token_creation');
+      throw new Error(userFriendlyError);
     }
   }
 

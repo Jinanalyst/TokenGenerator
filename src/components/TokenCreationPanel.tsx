@@ -25,6 +25,16 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useSolana } from '../hooks/useSolana';
 import { Link } from 'react-router-dom';
+import { 
+  validateTokenName, 
+  validateTokenSymbol, 
+  validateTokenSupply, 
+  validateDecimals,
+  validateImageFile,
+  sanitizeString 
+} from '../utils/inputValidation';
+import { createUserFriendlyError } from '../utils/errorHandling';
+import { openSecureUrl } from '../utils/urlSecurity';
 
 interface TokenCreationPanelProps {
   tokenData: {
@@ -52,6 +62,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
   const [tokenResult, setTokenResult] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({});
   
   // Local editable state
   const [editableData, setEditableData] = useState({
@@ -85,8 +96,37 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     setImagePreview(tokenData.image || null);
   }, [tokenData]);
 
+  const validateField = (field: string, value: any): string | null => {
+    switch (field) {
+      case 'name':
+        const nameValidation = validateTokenName(value);
+        return nameValidation.isValid ? null : nameValidation.error!;
+      case 'symbol':
+        const symbolValidation = validateTokenSymbol(value);
+        return symbolValidation.isValid ? null : symbolValidation.error!;
+      case 'supply':
+        const supplyValidation = validateTokenSupply(value);
+        return supplyValidation.isValid ? null : supplyValidation.error!;
+      case 'decimals':
+        const decimalsValidation = validateDecimals(value);
+        return decimalsValidation.isValid ? null : decimalsValidation.error!;
+      default:
+        return null;
+    }
+  };
+
   const handleInputChange = (field: string, value: any) => {
-    const updatedData = { ...editableData, [field]: value };
+    // Sanitize string inputs
+    const sanitizedValue = typeof value === 'string' ? sanitizeString(value) : value;
+    
+    // Validate the field
+    const error = validateField(field, sanitizedValue);
+    setValidationErrors(prev => ({
+      ...prev,
+      [field]: error || ''
+    }));
+
+    const updatedData = { ...editableData, [field]: sanitizedValue };
     setEditableData(updatedData);
     
     if (onTokenDataChange) {
@@ -105,35 +145,26 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      // Check file size (max 2MB)
-      if (file.size > 2 * 1024 * 1024) {
-        toast({
-          title: "File too large",
-          description: "Please choose an image smaller than 2MB",
-          variant: "destructive"
-        });
-        return;
-      }
+    if (!file) return;
 
-      // Check file type
-      if (!file.type.startsWith('image/')) {
-        toast({
-          title: "Invalid file type",
-          description: "Please choose an image file",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const imageUrl = e.target?.result as string;
-        setImagePreview(imageUrl);
-        handleInputChange('image', imageUrl);
-      };
-      reader.readAsDataURL(file);
+    // Secure file validation
+    const validation = validateImageFile(file);
+    if (!validation.isValid) {
+      toast({
+        title: "Invalid file",
+        description: validation.error,
+        variant: "destructive"
+      });
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const imageUrl = e.target?.result as string;
+      setImagePreview(imageUrl);
+      handleInputChange('image', imageUrl);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleCreateToken = async () => {
@@ -146,10 +177,23 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
       return;
     }
 
-    if (!editableData.name || !editableData.symbol) {
+    // Validate all fields before proceeding
+    const errors: {[key: string]: string} = {};
+    const nameError = validateField('name', editableData.name);
+    const symbolError = validateField('symbol', editableData.symbol);
+    const supplyError = validateField('supply', editableData.supply);
+    const decimalsError = validateField('decimals', editableData.decimals);
+
+    if (nameError) errors.name = nameError;
+    if (symbolError) errors.symbol = symbolError;
+    if (supplyError) errors.supply = supplyError;
+    if (decimalsError) errors.decimals = decimalsError;
+
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
       toast({
-        title: "Missing Information",
-        description: "Please provide token name and symbol",
+        title: "Validation Error",
+        description: "Please fix the errors in the form before creating the token",
         variant: "destructive"
       });
       return;
@@ -158,7 +202,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     setIsCreating(true);
     
     try {
-      console.log('Creating real token with data:', editableData);
+      console.log('Creating real token with validated data:', editableData);
 
       // Create the token using SolanaService with real wallet
       const metadata = {
@@ -185,9 +229,10 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
       }
     } catch (error) {
       console.error('Token creation failed:', error);
+      const userFriendlyError = createUserFriendlyError(error, 'token_creation');
       toast({
         title: "Creation Failed",
-        description: error instanceof Error ? error.message : "Token creation failed",
+        description: userFriendlyError,
         variant: "destructive"
       });
     } finally {
@@ -201,6 +246,17 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
       title: "Copied!",
       description: "Address copied to clipboard",
     });
+  };
+
+  const handleExternalLink = (url: string, confirmMessage?: string) => {
+    const success = openSecureUrl(url, confirmMessage);
+    if (!success) {
+      toast({
+        title: "Blocked",
+        description: "This link has been blocked for security reasons",
+        variant: "destructive"
+      });
+    }
   };
 
   const getNetworkConfig = () => {
@@ -309,7 +365,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           </div>
         </div>
 
-        {/* Token Details */}
+        {/* Token Details with Validation */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-4">
             <div className="bg-white/5 rounded-lg p-4 border border-white/10">
@@ -318,12 +374,17 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
                 <span className="text-purple-200 text-sm">Token Name</span>
               </div>
               {isEditing ? (
-                <Input
-                  value={editableData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
-                  placeholder="Enter token name"
-                  className="bg-white/10 border-white/20 text-white"
-                />
+                <div>
+                  <Input
+                    value={editableData.name}
+                    onChange={(e) => handleInputChange('name', e.target.value)}
+                    placeholder="Enter token name"
+                    className={`bg-white/10 border-white/20 text-white ${validationErrors.name ? 'border-red-400' : ''}`}
+                  />
+                  {validationErrors.name && (
+                    <p className="text-red-400 text-xs mt-1">{validationErrors.name}</p>
+                  )}
+                </div>
               ) : (
                 <p className="text-white font-semibold">{editableData.name || 'Unnamed Token'}</p>
               )}
@@ -335,13 +396,18 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
                 <span className="text-blue-200 text-sm">Symbol</span>
               </div>
               {isEditing ? (
-                <Input
-                  value={editableData.symbol}
-                  onChange={(e) => handleInputChange('symbol', e.target.value.toUpperCase())}
-                  placeholder="Enter symbol (e.g., TOKEN)"
-                  maxLength={10}
-                  className="bg-white/10 border-white/20 text-white"
-                />
+                <div>
+                  <Input
+                    value={editableData.symbol}
+                    onChange={(e) => handleInputChange('symbol', e.target.value.toUpperCase())}
+                    placeholder="Enter symbol (e.g., TOKEN)"
+                    maxLength={10}
+                    className={`bg-white/10 border-white/20 text-white ${validationErrors.symbol ? 'border-red-400' : ''}`}
+                  />
+                  {validationErrors.symbol && (
+                    <p className="text-red-400 text-xs mt-1">{validationErrors.symbol}</p>
+                  )}
+                </div>
               ) : (
                 <p className="text-white font-semibold">{editableData.symbol || 'TOKEN'}</p>
               )}
@@ -355,13 +421,18 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
                 <span className="text-green-200 text-sm">Total Supply</span>
               </div>
               {isEditing ? (
-                <Input
-                  type="number"
-                  value={editableData.supply}
-                  onChange={(e) => handleInputChange('supply', parseInt(e.target.value) || 0)}
-                  placeholder="Enter total supply"
-                  className="bg-white/10 border-white/20 text-white"
-                />
+                <div>
+                  <Input
+                    type="number"
+                    value={editableData.supply}
+                    onChange={(e) => handleInputChange('supply', parseInt(e.target.value) || 0)}
+                    placeholder="Enter total supply"
+                    className={`bg-white/10 border-white/20 text-white ${validationErrors.supply ? 'border-red-400' : ''}`}
+                  />
+                  {validationErrors.supply && (
+                    <p className="text-red-400 text-xs mt-1">{validationErrors.supply}</p>
+                  )}
+                </div>
               ) : (
                 <p className="text-white font-semibold">
                   {editableData.supply.toLocaleString()}
@@ -375,14 +446,19 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
                 <span className="text-indigo-200 text-sm">Decimals</span>
               </div>
               {isEditing ? (
-                <Input
-                  type="number"
-                  value={editableData.decimals}
-                  onChange={(e) => handleInputChange('decimals', parseInt(e.target.value) || 0)}
-                  min="0"
-                  max="18"
-                  className="bg-white/10 border-white/20 text-white"
-                />
+                <div>
+                  <Input
+                    type="number"
+                    value={editableData.decimals}
+                    onChange={(e) => handleInputChange('decimals', parseInt(e.target.value) || 0)}
+                    min="0"
+                    max="18"
+                    className={`bg-white/10 border-white/20 text-white ${validationErrors.decimals ? 'border-red-400' : ''}`}
+                  />
+                  {validationErrors.decimals && (
+                    <p className="text-red-400 text-xs mt-1">{validationErrors.decimals}</p>
+                  )}
+                </div>
               ) : (
                 <p className="text-white font-semibold">{editableData.decimals}</p>
               )}
@@ -466,7 +542,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           </div>
         )}
 
-        {/* Token Result (if created) */}
+        {/* Token Result (if created) with secure external links */}
         {isCreated && tokenResult && (
           <div className="space-y-4">
             <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/30">
@@ -501,7 +577,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
             <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-3">
               <Button
                 variant="outline"
-                onClick={() => window.open(tokenResult.explorerUrl, '_blank')}
+                onClick={() => handleExternalLink(tokenResult.explorerUrl, "Open Solana Explorer?")}
                 className="text-white border-white/20 hover:bg-white/10"
               >
                 <ExternalLink className="w-4 h-4 mr-2" />
@@ -556,14 +632,14 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           </div>
         )}
 
-        {/* Enhanced Disclaimer */}
+        {/* Enhanced Security Disclaimer */}
         <div className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
           <div className="flex items-start space-x-2">
-            <AlertTriangle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+            <Shield className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
             <div className="text-orange-200 text-sm">
-              <strong>Real Token Creation:</strong> This interface creates actual Solana tokens on the blockchain. 
-              Make sure you understand the authority settings before creating your token. 
-              Revoked authorities cannot be restored! Always test on devnet first.
+              <strong>Security Notice:</strong> This interface creates actual Solana tokens with real value. 
+              All inputs are validated and sanitized for security. Rate limiting is in effect to prevent abuse.
+              Always verify transaction details before confirming. Revoked authorities cannot be restored!
             </div>
           </div>
         </div>

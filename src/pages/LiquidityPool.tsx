@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,20 +5,84 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, ExternalLink, Droplets, Info, AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useToast } from '@/hooks/use-toast';
+import { validateWalletAddress } from '../utils/inputValidation';
+import { createRaydiumUrl, openSecureUrl } from '../utils/urlSecurity';
+import { createUserFriendlyError } from '../utils/errorHandling';
 
 const LiquidityPool = () => {
   const [tokenAddress, setTokenAddress] = useState('');
   const [solAmount, setSolAmount] = useState('');
   const [tokenAmount, setTokenAmount] = useState('');
+  const [validationError, setValidationError] = useState('');
+  const { toast } = useToast();
+
+  const handleTokenAddressChange = (value: string) => {
+    setTokenAddress(value);
+    
+    // Validate wallet address format
+    if (value) {
+      const validation = validateWalletAddress(value);
+      setValidationError(validation.isValid ? '' : validation.error!);
+    } else {
+      setValidationError('');
+    }
+  };
 
   const openRaydium = () => {
     if (!tokenAddress) {
-      alert('Please enter a token address first');
+      toast({
+        title: "Token Address Required",
+        description: "Please enter a valid token mint address first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validate token address before creating URL
+    const validation = validateWalletAddress(tokenAddress);
+    if (!validation.isValid) {
+      toast({
+        title: "Invalid Token Address",
+        description: validation.error,
+        variant: "destructive"
+      });
       return;
     }
     
-    const raydiumUrl = `https://raydium.io/liquidity/create/?token=${tokenAddress}`;
-    window.open(raydiumUrl, '_blank');
+    try {
+      const raydiumUrl = createRaydiumUrl(tokenAddress, 'devnet'); // Default to devnet for safety
+      const success = openSecureUrl(
+        raydiumUrl, 
+        "Open Raydium to create a liquidity pool for your token?"
+      );
+      
+      if (!success) {
+        toast({
+          title: "Security Block",
+          description: "The link was blocked for security reasons",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      const userFriendlyError = createUserFriendlyError(error, 'validation');
+      toast({
+        title: "Invalid Input",
+        description: userFriendlyError,
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleExternalLink = (url: string, confirmMessage: string) => {
+    const success = openSecureUrl(url, confirmMessage);
+    if (!success) {
+      toast({
+        title: "Blocked",
+        description: "This link has been blocked for security reasons",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
@@ -48,9 +111,10 @@ const LiquidityPool = () => {
         </div>
 
         <div className="max-w-2xl mx-auto space-y-6">
-          {/* Main Card */}
+          {/* Main Card with enhanced security */}
           <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 p-6">
             <div className="space-y-6">
+              {/* Header */}
               <div className="flex items-center space-x-3 mb-4">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-400 flex items-center justify-center">
                   <Droplets className="w-4 h-4 text-white" />
@@ -61,15 +125,20 @@ const LiquidityPool = () => {
                 </Badge>
               </div>
 
-              {/* Token Address Input */}
+              {/* Token Address Input with Validation */}
               <div className="space-y-2">
                 <label className="text-purple-200 text-sm font-medium">Token Mint Address</label>
                 <Input
                   value={tokenAddress}
-                  onChange={(e) => setTokenAddress(e.target.value)}
+                  onChange={(e) => handleTokenAddressChange(e.target.value)}
                   placeholder="Enter your token's mint address (e.g., 11111111111111111111111111111112)"
-                  className="bg-white/10 border-white/20 text-white placeholder-white/60 focus:border-purple-400"
+                  className={`bg-white/10 border-white/20 text-white placeholder-white/60 focus:border-purple-400 ${
+                    validationError ? 'border-red-400' : ''
+                  }`}
                 />
+                {validationError && (
+                  <p className="text-red-400 text-xs">{validationError}</p>
+                )}
                 <p className="text-purple-300 text-xs">
                   This is the mint address you received when creating your token
                 </p>
@@ -102,15 +171,21 @@ const LiquidityPool = () => {
                 </div>
               </div>
 
-              {/* Action Button */}
+              {/* Secure Action Button */}
               <Button
                 onClick={openRaydium}
-                disabled={!tokenAddress}
+                disabled={!tokenAddress || !!validationError}
                 className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white py-3 text-lg font-semibold"
               >
                 <ExternalLink className="w-5 h-5 mr-2" />
-                Open in Raydium
+                Open in Raydium (Secure)
               </Button>
+              
+              {validationError && (
+                <p className="text-center text-red-400 text-sm">
+                  Please fix the token address before proceeding
+                </p>
+              )}
             </div>
           </Card>
 
@@ -147,7 +222,7 @@ const LiquidityPool = () => {
             </Card>
           </div>
 
-          {/* Raydium Info */}
+          {/* Enhanced Raydium Info with Security Notice */}
           <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 p-4">
             <div className="text-center">
               <h3 className="text-white font-semibold mb-2">About Raydium</h3>
@@ -159,12 +234,17 @@ const LiquidityPool = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => window.open('https://raydium.io/', '_blank')}
+                  onClick={() => handleExternalLink('https://raydium.io/', 'Visit the official Raydium website?')}
                   className="text-purple-300 hover:text-purple-200"
                 >
                   Visit Raydium
                   <ExternalLink className="w-3 h-3 ml-1" />
                 </Button>
+              </div>
+              <div className="mt-3 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
+                <p className="text-blue-200 text-xs">
+                  🔒 All external links are validated for security and require confirmation
+                </p>
               </div>
             </div>
           </Card>
