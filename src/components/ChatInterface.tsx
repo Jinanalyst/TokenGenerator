@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,7 +78,7 @@ const ChatInterface = () => {
     // Handle regular numbers
     const supplyMatch = text.match(/(\d+(?:,\d+)*)\s*(?:tokens?|supply)/i) || 
                        text.match(/supply[:\s]*(\d+(?:,\d+)*)/i) ||
-                       text.match /(\d+(?:,\d+)*)\s+tokens?/i;
+                       text.match(/(\d+(?:,\d+)*)\s+tokens?/i);
     return supplyMatch ? parseInt(supplyMatch[1].replace(/,/g, '')) : null;
   };
 
