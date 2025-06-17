@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { SolanaService, mainnetService, devnetService, TokenMetadata } from '../services/solanaService';
+import { Keypair } from '@solana/web3.js';
 
 export const useSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
   const [service, setService] = useState<SolanaService>(
@@ -31,13 +32,18 @@ export const useSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
     }
   };
 
-  const createToken = async (metadata: TokenMetadata) => {
+  const createToken = async (metadata: TokenMetadata, wallet?: any) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // For demo purposes, we'll simulate token creation
-      const result = await service.simulateTokenCreation(metadata);
+      if (!wallet || !wallet.publicKey) {
+        throw new Error('Wallet not connected');
+      }
+
+      // For real token creation, we need the wallet to sign
+      // This is a simplified version - in a real app, you'd use the wallet adapter
+      const result = await service.createToken(wallet, metadata);
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Token creation failed';
@@ -61,6 +67,7 @@ export const useSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
     error,
     createToken,
     switchNetwork,
-    checkConnection: () => checkConnection(service)
+    checkConnection: () => checkConnection(service),
+    getTokenCreationFee: () => SolanaService.getTokenCreationFee()
   };
 };

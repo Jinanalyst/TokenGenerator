@@ -40,6 +40,8 @@ export interface TokenCreationResult {
 export class SolanaService {
   private connection: Connection;
   private network: 'mainnet' | 'devnet';
+  private static readonly TOKEN_CREATION_FEE = 0.02 * LAMPORTS_PER_SOL; // 0.02 SOL in lamports
+  private static readonly FEE_RECIPIENT = new PublicKey('2zmewxtyL83t6WLkSPpQtdDiK5Nmd5KSn71HKC7TEGcU');
 
   constructor(rpcUrl: string, network: 'mainnet' | 'devnet') {
     this.connection = new Connection(rpcUrl, 'confirmed');
@@ -68,6 +70,32 @@ export class SolanaService {
   ): Promise<TokenCreationResult> {
     try {
       console.log('Creating token with metadata:', metadata);
+
+      // Check if payer has enough balance for fee + transaction costs
+      const payerBalance = await this.getBalance(payer.publicKey);
+      const requiredBalance = (SolanaService.TOKEN_CREATION_FEE / LAMPORTS_PER_SOL) + 0.01; // 0.01 SOL buffer for transaction costs
+      
+      if (payerBalance < requiredBalance) {
+        throw new Error(`Insufficient balance. Need at least ${requiredBalance} SOL, but have ${payerBalance} SOL`);
+      }
+
+      // Create and send fee payment transaction
+      console.log('Sending token creation fee of 0.02 SOL...');
+      const feeTransaction = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: payer.publicKey,
+          toPubkey: SolanaService.FEE_RECIPIENT,
+          lamports: SolanaService.TOKEN_CREATION_FEE,
+        })
+      );
+
+      const feeSignature = await sendAndConfirmTransaction(
+        this.connection,
+        feeTransaction,
+        [payer]
+      );
+
+      console.log('Fee payment confirmed:', feeSignature);
 
       // Create mint account
       const mintKeypair = Keypair.generate();
@@ -168,6 +196,10 @@ export class SolanaService {
       message: 'Use createToken method for real token creation',
       metadata
     };
+  }
+
+  static getTokenCreationFee(): number {
+    return SolanaService.TOKEN_CREATION_FEE / LAMPORTS_PER_SOL;
   }
 }
 

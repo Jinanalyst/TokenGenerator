@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -121,7 +120,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     try {
       console.log('Creating real token with data:', editableData);
 
-      // Create the token using SolanaService
+      // Create the token using SolanaService with real wallet
       const metadata = {
         name: editableData.name,
         symbol: editableData.symbol,
@@ -132,18 +131,10 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
         revokeUpdateAuthority: editableData.revokeUpdateAuthority
       };
 
-      // Note: This would require the wallet to sign transactions
-      // For now, we'll create a more realistic simulation that shows actual addresses
-      const result = await solana.createToken(metadata);
+      const result = await solana.createToken(metadata, wallet);
       
       if (result) {
-        setTokenResult({
-          mintAddress: `${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`,
-          tokenAccountAddress: `${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`,
-          transactionSignature: `${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`,
-          explorerUrl: solana.service.getExplorerUrl('mock-address'),
-          raydiumUrl: solana.service.getRaydiumUrl('mock-address')
-        });
+        setTokenResult(result);
         setIsCreated(true);
         
         toast({
@@ -215,6 +206,20 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
               </Button>
             )}
           </div>
+        </div>
+
+        {/* Fee Information */}
+        <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-500/30">
+          <div className="flex items-center space-x-2 mb-2">
+            <Coins className="w-4 h-4 text-blue-400" />
+            <span className="text-blue-300 font-semibold">Token Creation Fee</span>
+          </div>
+          <p className="text-blue-100">
+            Creating a token costs <strong>0.02 SOL</strong> + network fees
+          </p>
+          <p className="text-blue-200 text-sm mt-1">
+            This fee supports the platform and ensures quality token creation
+          </p>
         </div>
 
         {/* Token Details */}
@@ -436,7 +441,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
               ) : (
                 <div className="flex items-center space-x-2">
                   <Zap className="w-5 h-5" />
-                  <span>Create Real Token</span>
+                  <span>Create Token (0.02 SOL)</span>
                 </div>
               )}
             </Button>
