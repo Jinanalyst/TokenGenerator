@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Send, Bot, User, Sparkles } from 'lucide-react';
 import AIAgent from './AIAgent';
 import TokenCreationPanel from './TokenCreationPanel';
-import WalletConnection from './WalletConnection';
+import WalletSelector from './WalletSelector';
 
 interface Message {
   id: string;
@@ -250,9 +249,9 @@ const ChatInterface = () => {
 
   return (
     <div className="container mx-auto px-4 max-w-4xl">
-      {/* Wallet Connection - Always show */}
+      {/* Wallet Connection - Updated to use WalletSelector */}
       <div className="mb-4">
-        <WalletConnection onWalletChange={setWallet} />
+        <WalletSelector onWalletChange={setWallet} />
       </div>
 
       <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 shadow-2xl">
