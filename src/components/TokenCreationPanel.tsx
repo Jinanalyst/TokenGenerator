@@ -192,6 +192,8 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     setTestResult(null);
     
     try {
+      console.log(`Testing transaction on ${editableData.network}...`);
+      
       const metadata = {
         name: editableData.name,
         symbol: editableData.symbol,
@@ -203,13 +205,13 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
         revokeUpdateAuthority: editableData.revokeUpdateAuthority
       };
 
-      const result = await solana.service.testTransactionReadiness(wallet, metadata);
+      const result = await solana.testTransaction(metadata, wallet);
       setTestResult(result);
       
       if (result.success) {
         toast({
           title: "Transaction Test Passed! ✅",
-          description: "All checks passed. Ready to create token.",
+          description: `All checks passed. Ready to create token on ${editableData.network}.`,
         });
       } else {
         toast({
@@ -220,9 +222,10 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
       }
     } catch (error) {
       console.error('Transaction test failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unable to test transaction readiness';
       toast({
         title: "Test Failed",
-        description: "Unable to test transaction readiness",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
@@ -265,9 +268,8 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     setIsCreating(true);
     
     try {
-      console.log('Creating real token with validated data and metadata:', editableData);
+      console.log(`Creating token on ${editableData.network} with validated data:`, editableData);
 
-      // Create the token using SolanaService with real wallet and metadata
       const metadata = {
         name: editableData.name,
         symbol: editableData.symbol,
@@ -275,7 +277,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
         supply: editableData.supply,
         description: editableData.name ? `${editableData.name} - Created with Solana Token Generator AI` : undefined,
         image: editableData.image,
-        imageBlob: imageBlob || undefined, // Include the actual blob for IPFS upload
+        imageBlob: imageBlob || undefined,
         revokeMintAuthority: editableData.revokeMintAuthority,
         revokeFreezeAuthority: editableData.revokeFreezeAuthority,
         revokeUpdateAuthority: editableData.revokeUpdateAuthority
@@ -306,11 +308,11 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
         }
       }
     } catch (error) {
-      console.error('Token creation failed:', error);
-      const userFriendlyError = createUserFriendlyError(error, 'token_creation');
+      console.error(`Token creation failed on ${editableData.network}:`, error);
+      const errorMessage = error instanceof Error ? error.message : `Token creation failed on ${editableData.network}`;
       toast({
         title: "Creation Failed",
-        description: userFriendlyError,
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
@@ -369,6 +371,11 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
             <Badge className={`bg-gradient-to-r ${networkConfig.color} text-white`}>
               {networkConfig.name}
             </Badge>
+            {solana.isConnected && (
+              <Badge variant="secondary" className="bg-green-500/20 text-green-200">
+                Connected
+              </Badge>
+            )}
             {!isCreated && (
               <Button
                 variant="ghost"
@@ -382,6 +389,28 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
             )}
           </div>
         </div>
+
+        {/* Connection Status */}
+        {!solana.isConnected && (
+          <div className="bg-red-500/10 rounded-lg p-4 border border-red-500/30">
+            <div className="flex items-center space-x-2 mb-2">
+              <AlertTriangle className="w-4 h-4 text-red-400" />
+              <span className="text-red-300 font-semibold">Network Connection Issue</span>
+            </div>
+            <p className="text-red-200 text-sm">
+              {solana.error || `Unable to connect to ${editableData.network} network. Please check your connection and try again.`}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => solana.checkConnection()}
+              className="text-red-300 hover:text-red-200 mt-2"
+              disabled={solana.isLoading}
+            >
+              {solana.isLoading ? 'Reconnecting...' : 'Retry Connection'}
+            </Button>
+          </div>
+        )}
 
         {/* Fee Information */}
         <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-500/30">
@@ -623,7 +652,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           </div>
         )}
 
-        {/* Transaction Test Results */}
+        {/* Transaction Test Results with enhanced network info */}
         {testResult && (
           <div className={`rounded-lg p-4 border ${testResult.success 
             ? 'bg-green-500/10 border-green-500/30' 
@@ -636,8 +665,13 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
                 <AlertCircle className="w-5 h-5 text-red-400" />
               )}
               <span className={`font-semibold ${testResult.success ? 'text-green-300' : 'text-red-300'}`}>
-                Transaction Test {testResult.success ? 'Passed' : 'Failed'}
+                {editableData.network.toUpperCase()} Transaction Test {testResult.success ? 'Passed' : 'Failed'}
               </span>
+              {testResult.currentRPC && (
+                <Badge variant="secondary" className="text-xs">
+                  {testResult.currentRPC}
+                </Badge>
+              )}
             </div>
             
             {testResult.errors && testResult.errors.length > 0 && (
@@ -768,47 +802,52 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           </div>
         )}
 
-        {/* Action Buttons */}
+        {/* Action Buttons with enhanced network awareness */}
         {!isCreated && (
           <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 justify-center">
             <Button
               onClick={handleTestTransaction}
-              disabled={isTesting || !wallet}
+              disabled={isTesting || !wallet || !solana.isConnected}
               variant="outline"
               className="text-white border-white/20 hover:bg-white/10"
             >
               {isTesting ? (
                 <div className="flex items-center space-x-2">
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>Testing...</span>
+                  <span>Testing {editableData.network}...</span>
                 </div>
               ) : (
                 <div className="flex items-center space-x-2">
                   <TestTube className="w-4 h-4" />
-                  <span>Test Transaction</span>
+                  <span>Test {editableData.network.toUpperCase()}</span>
                 </div>
               )}
             </Button>
 
             <Button
               onClick={handleCreateToken}
-              disabled={isCreating || !wallet || (testResult && !testResult.success)}
+              disabled={isCreating || !wallet || !solana.isConnected || (testResult && !testResult.success)}
               className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white px-8 py-3 text-lg font-semibold"
             >
               {isCreating ? (
                 <div className="flex items-center space-x-2">
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>Creating Token...</span>
+                  <span>Creating on {editableData.network}...</span>
                 </div>
               ) : !wallet ? (
                 <div className="flex items-center space-x-2">
                   <Lock className="w-5 h-5" />
                   <span>Connect Wallet to Create</span>
                 </div>
+              ) : !solana.isConnected ? (
+                <div className="flex items-center space-x-2">
+                  <AlertTriangle className="w-5 h-5" />
+                  <span>Network Disconnected</span>
+                </div>
               ) : (
                 <div className="flex items-center space-x-2">
                   <Zap className="w-5 h-5" />
-                  <span>Create Token (0.02 SOL)</span>
+                  <span>Create on {editableData.network.toUpperCase()} (0.02 SOL)</span>
                 </div>
               )}
             </Button>
