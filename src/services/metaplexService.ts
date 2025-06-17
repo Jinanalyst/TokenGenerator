@@ -7,9 +7,9 @@ import {
   SYSVAR_RENT_PUBKEY
 } from '@solana/web3.js';
 import {
-  createCreateMetadataAccountV3Instruction,
-  PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID,
-  CreateMetadataAccountArgsV3
+  createMetadataAccountV3,
+  MPL_TOKEN_METADATA_PROGRAM_ID,
+  CreateMetadataAccountV3InstructionArgs
 } from '@metaplex-foundation/mpl-token-metadata';
 import { IPFSService } from './ipfsService';
 
@@ -45,10 +45,10 @@ export class MetaplexService {
     const [metadataAddress] = PublicKey.findProgramAddressSync(
       [
         Buffer.from('metadata'),
-        TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+        MPL_TOKEN_METADATA_PROGRAM_ID.toBuffer(),
         mintPublicKey.toBuffer(),
       ],
-      TOKEN_METADATA_PROGRAM_ID
+      MPL_TOKEN_METADATA_PROGRAM_ID
     );
     return metadataAddress;
   }
@@ -60,7 +60,7 @@ export class MetaplexService {
   ): Promise<Transaction> {
     const metadataAddress = MetaplexService.getMetadataAddress(mintPublicKey);
 
-    const createMetadataAccountArgs: CreateMetadataAccountArgsV3 = {
+    const createMetadataArgs: CreateMetadataAccountV3InstructionArgs = {
       data: {
         name: metadata.name,
         symbol: metadata.symbol,
@@ -74,7 +74,7 @@ export class MetaplexService {
       collectionDetails: null,
     };
 
-    const createMetadataInstruction = createCreateMetadataAccountV3Instruction(
+    const createMetadataInstruction = createMetadataAccountV3(
       {
         metadata: metadataAddress,
         mint: mintPublicKey,
@@ -84,9 +84,7 @@ export class MetaplexService {
         systemProgram: SystemProgram.programId,
         rent: SYSVAR_RENT_PUBKEY,
       },
-      {
-        createMetadataAccountArgsV3: createMetadataAccountArgs,
-      }
+      createMetadataArgs
     );
 
     const transaction = new Transaction().add(createMetadataInstruction);
