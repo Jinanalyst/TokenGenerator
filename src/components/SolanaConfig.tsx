@@ -2,9 +2,13 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Globe, Zap, Shield, Code } from 'lucide-react';
+import { Globe, Zap, Shield, Code, CheckCircle, XCircle } from 'lucide-react';
+import { useSolana } from '../hooks/useSolana';
 
 const SolanaConfig = () => {
+  const mainnet = useSolana('mainnet');
+  const devnet = useSolana('devnet');
+
   const networks = [
     {
       name: 'Mainnet Beta',
@@ -14,7 +18,8 @@ const SolanaConfig = () => {
       status: 'Live',
       description: 'Production network with real SOL',
       color: 'from-green-500 to-emerald-500',
-      icon: <Zap className="w-4 h-4" />
+      icon: <Zap className="w-4 h-4" />,
+      connection: mainnet
     },
     {
       name: 'Devnet',
@@ -24,7 +29,8 @@ const SolanaConfig = () => {
       status: 'Development',
       description: 'Testing network with free SOL',
       color: 'from-orange-500 to-yellow-500',
-      icon: <Code className="w-4 h-4" />
+      icon: <Code className="w-4 h-4" />,
+      connection: devnet
     }
   ];
 
@@ -32,7 +38,7 @@ const SolanaConfig = () => {
     <div className="space-y-6">
       <div className="text-center">
         <h2 className="text-2xl font-bold text-white mb-2">Solana Network Configuration</h2>
-        <p className="text-purple-200">Ready to connect to both mainnet and devnet</p>
+        <p className="text-purple-200">Connected to both mainnet and devnet</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -80,10 +86,27 @@ const SolanaConfig = () => {
               </div>
 
               <div className="pt-2 border-t border-white/10">
-                <div className="flex items-center justify-center space-x-2 text-green-400">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span className="text-sm">Connected & Ready</span>
+                <div className="flex items-center justify-center space-x-2">
+                  {network.connection.isConnected ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 text-green-400" />
+                      <span className="text-green-400 text-sm">Connected & Ready</span>
+                    </>
+                  ) : network.connection.isLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-yellow-400/30 border-t-yellow-400 rounded-full animate-spin"></div>
+                      <span className="text-yellow-400 text-sm">Connecting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-4 h-4 text-red-400" />
+                      <span className="text-red-400 text-sm">Connection Failed</span>
+                    </>
+                  )}
                 </div>
+                {network.connection.error && (
+                  <p className="text-red-300 text-xs mt-1 text-center">{network.connection.error}</p>
+                )}
               </div>
             </div>
           </Card>
