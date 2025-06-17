@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,9 +34,14 @@ interface TokenCreationPanelProps {
     revokeUpdateAuthority?: boolean;
   };
   wallet?: any;
+  onTokenDataChange?: (data: any) => void;
 }
 
-const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({ tokenData, wallet }) => {
+const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({ 
+  tokenData, 
+  wallet, 
+  onTokenDataChange 
+}) => {
   const [isCreating, setIsCreating] = useState(false);
   const [isCreated, setIsCreated] = useState(false);
   const [tokenResult, setTokenResult] = useState<any>(null);
@@ -47,6 +51,35 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({ tokenData, wall
   
   const { toast } = useToast();
   const solana = useSolana(tokenData.network as 'mainnet' | 'devnet');
+
+  // Update local state when tokenData changes
+  useEffect(() => {
+    setRevokeMintAuthority(tokenData.revokeMintAuthority || false);
+    setRevokeFreezeAuthority(tokenData.revokeFreezeAuthority || false);
+    setRevokeUpdateAuthority(tokenData.revokeUpdateAuthority || false);
+  }, [tokenData]);
+
+  // Notify parent component when authority settings change
+  const updateTokenData = (updates: any) => {
+    if (onTokenDataChange) {
+      onTokenDataChange({ ...tokenData, ...updates });
+    }
+  };
+
+  const handleMintAuthorityChange = (checked: boolean) => {
+    setRevokeMintAuthority(checked);
+    updateTokenData({ revokeMintAuthority: checked });
+  };
+
+  const handleFreezeAuthorityChange = (checked: boolean) => {
+    setRevokeFreezeAuthority(checked);
+    updateTokenData({ revokeFreezeAuthority: checked });
+  };
+
+  const handleUpdateAuthorityChange = (checked: boolean) => {
+    setRevokeUpdateAuthority(checked);
+    updateTokenData({ revokeUpdateAuthority: checked });
+  };
 
   const handleCreateToken = async () => {
     if (!wallet) {
@@ -61,7 +94,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({ tokenData, wall
     setIsCreating(true);
     
     try {
-      // Create metadata with authority settings
+      // Create metadata with current authority settings
       const metadata = {
         name: tokenData.name || 'My Token',
         symbol: tokenData.symbol || 'TOKEN',
@@ -198,31 +231,34 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({ tokenData, wall
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   checked={revokeMintAuthority}
-                  onCheckedChange={(checked) => setRevokeMintAuthority(checked === true)}
+                  onCheckedChange={handleMintAuthorityChange}
                   id="revoke-mint"
                 />
                 <label htmlFor="revoke-mint" className="text-sm text-gray-300 cursor-pointer">
                   Revoke Mint Authority (Prevents creating more tokens)
+                  {revokeMintAuthority && <span className="text-green-400 ml-2">✓ Will be revoked</span>}
                 </label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   checked={revokeFreezeAuthority}
-                  onCheckedChange={(checked) => setRevokeFreezeAuthority(checked === true)}
+                  onCheckedChange={handleFreezeAuthorityChange}
                   id="revoke-freeze"
                 />
                 <label htmlFor="revoke-freeze" className="text-sm text-gray-300 cursor-pointer">
                   Revoke Freeze Authority (Prevents freezing token accounts)
+                  {revokeFreezeAuthority && <span className="text-green-400 ml-2">✓ Will be revoked</span>}
                 </label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   checked={revokeUpdateAuthority}
-                  onCheckedChange={(checked) => setRevokeUpdateAuthority(checked === true)}
+                  onCheckedChange={handleUpdateAuthorityChange}
                   id="revoke-update"
                 />
                 <label htmlFor="revoke-update" className="text-sm text-gray-300 cursor-pointer">
                   Revoke Update Authority (Makes metadata immutable)
+                  {revokeUpdateAuthority && <span className="text-green-400 ml-2">✓ Will be revoked</span>}
                 </label>
               </div>
             </div>

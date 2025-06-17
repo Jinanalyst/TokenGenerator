@@ -20,7 +20,7 @@ const ChatInterface = () => {
     {
       id: '1',
       type: 'ai',
-      content: "Hey there! 👋 I'm your Solana Token Generator AI assistant. I can help you create real tokens on both Solana mainnet and devnet with advanced features like authority controls. Connect your wallet and let's create something amazing!",
+      content: "Hey there! 👋 I'm your Solana Token Generator AI assistant. I can help you create real tokens on both Solana mainnet and devnet with advanced features like authority controls. Connect your wallet and let's create something amazing!\n\nYou can tell me:\n• Token name and symbol\n• Supply amount (e.g., '1 million tokens')\n• Authority settings\n• Network preference",
       timestamp: new Date(),
     }
   ]);
@@ -38,6 +38,10 @@ const ChatInterface = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const handleTokenDataChange = (newTokenData: any) => {
+    setCurrentTokenData(newTokenData);
+  };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
@@ -82,9 +86,29 @@ const ChatInterface = () => {
       };
     }
 
+    // Enhanced supply handling
+    if (input.includes('supply') || input.includes('million') || input.includes('billion') || /\d+/.test(input)) {
+      const supplyAmount = extractTokenSupply(userInput);
+      if (supplyAmount) {
+        const updatedTokenData = {
+          ...currentTokenData,
+          supply: supplyAmount,
+          name: currentTokenData?.name || extractTokenName(userInput) || 'Your Token',
+          symbol: currentTokenData?.symbol || extractTokenSymbol(userInput) || 'TOKEN',
+          decimals: 9,
+          network: currentTokenData?.network || 'devnet'
+        };
+
+        return {
+          content: `Perfect! I've updated your token supply to **${supplyAmount.toLocaleString()}** tokens.\n\n🪙 **Current Token Details:**\n• Name: ${updatedTokenData.name}\n• Symbol: ${updatedTokenData.symbol}\n• Supply: ${updatedTokenData.supply.toLocaleString()}\n• Network: ${updatedTokenData.network}\n\nYou can also set authority controls using the checkboxes below, or just say "create it" to deploy!`,
+          tokenData: updatedTokenData
+        };
+      }
+    }
+
     if (input.includes('authority') || input.includes('revoke') || input.includes('mint') || input.includes('freeze')) {
       return {
-        content: "Great question about token authorities! 🔐\n\n**Authority Types:**\n• **Mint Authority**: Can create new tokens\n• **Freeze Authority**: Can freeze token accounts\n• **Update Authority**: Can modify token metadata\n\n**Revoking Authorities:**\n• Increases trust and security\n• Makes tokens more decentralized\n• Cannot be undone once revoked\n\nWhen creating your token, you can choose which authorities to revoke. This is especially important for meme coins and community tokens!",
+        content: "Great question about token authorities! 🔐\n\n**Authority Types:**\n• **Mint Authority**: Can create new tokens - check to revoke this\n• **Freeze Authority**: Can freeze token accounts - check to revoke this  \n• **Update Authority**: Can modify token metadata - check to revoke this\n\n**Why Revoke Authorities?**\n• Increases trust and security\n• Makes tokens more decentralized\n• Cannot be undone once revoked\n\nUse the checkboxes in the panel below to select which authorities to revoke. The green checkmarks will show your selections!",
         tokenData: null
       };
     }
@@ -98,48 +122,53 @@ const ChatInterface = () => {
 
     if (input.includes('create') || input.includes('token') || input.includes('generate')) {
       return {
-        content: "Awesome! I'm detecting you want to create a real token. Let me gather some details. What should we call your token? What's the symbol (like BTC, ETH)? Also, would you prefer mainnet or devnet? And do you want to revoke any authorities for security?",
+        content: "Awesome! I'm ready to help you create a real token. Let me gather some details:\n\n**Tell me:**\n• What should we call your token?\n• What's the symbol (like BTC, ETH)?\n• How many tokens? (e.g., '1 million tokens')\n• Mainnet or devnet?\n• Any authority controls needed?\n\nJust describe what you want naturally!",
         tokenData: null
       };
     }
 
     if (input.includes('mainnet') || input.includes('devnet')) {
       const network = input.includes('mainnet') ? 'mainnet' : 'devnet';
+      const updatedTokenData = {
+        ...currentTokenData,
+        network
+      };
       return {
-        content: `Perfect! I'll set this up for Solana ${network}. Now, could you tell me more about your token? What's the name, symbol, and how many tokens should we create initially?`,
-        tokenData: { network }
+        content: `Perfect! I'll set this up for Solana ${network}. ${network === 'mainnet' ? '⚠️ Remember mainnet uses real SOL!' : '✅ Devnet is perfect for testing!'}\n\nNow, what else would you like to configure for your token?`,
+        tokenData: updatedTokenData
       };
     }
 
     // Check if user is providing token details
     if (input.includes('name') || input.includes('symbol') || /\b[A-Z]{2,5}\b/.test(userInput)) {
       const tokenData = {
-        name: extractTokenName(userInput),
-        symbol: extractTokenSymbol(userInput),
-        supply: extractTokenSupply(userInput) || 1000000,
+        ...currentTokenData,
+        name: extractTokenName(userInput) || currentTokenData?.name,
+        symbol: extractTokenSymbol(userInput) || currentTokenData?.symbol,
+        supply: extractTokenSupply(userInput) || currentTokenData?.supply || 1000000,
         decimals: 9,
-        network: 'devnet'
+        network: currentTokenData?.network || 'devnet'
       };
 
       return {
-        content: `Great! I've got the details for your token:\n\n🪙 **Name**: ${tokenData.name || 'Your Token'}\n🏷️ **Symbol**: ${tokenData.symbol || 'TOKEN'}\n📊 **Supply**: ${tokenData.supply.toLocaleString()}\n🌐 **Network**: ${tokenData.network}\n\nLooks good? I can create this token for you right now! Just say "create it" or "let's go"!`,
+        content: `Great! I've got the details for your token:\n\n🪙 **Name**: ${tokenData.name || 'Your Token'}\n🏷️ **Symbol**: ${tokenData.symbol || 'TOKEN'}\n📊 **Supply**: ${tokenData.supply.toLocaleString()}\n🌐 **Network**: ${tokenData.network}\n\nLooks good? You can adjust the authority settings below or say "create it" to deploy!`,
         tokenData
       };
     }
 
-    if (input.includes('create it') || input.includes("let's go") || input.includes('deploy')) {
+    if (input.includes('create it') || input.includes("let's go") || input.includes('deploy') || input.includes('launch')) {
       return {
-        content: "🚀 Initiating token creation on Solana! This is where the magic happens...\n\n✨ Connecting to Solana network\n🔐 Setting up token mint\n📝 Configuring metadata\n🎯 Deploying smart contract\n\n*Note: This is a demo interface. In production, this would connect to actual Solana APIs and create real tokens!*",
+        content: "🚀 Perfect! Your token configuration is ready for deployment!\n\n✨ **Next Steps:**\n1. Review your token details below\n2. Set authority controls (checkboxes)\n3. Click 'Create Real Token'\n4. Confirm in your wallet\n\n*This creates a real token on the Solana blockchain!*",
         tokenData: currentTokenData
       };
     }
 
     // Default responses
     const responses = [
-      "I'm here to help you create real Solana tokens with advanced features! Tell me about your token vision.",
-      "Ready to build something amazing on Solana? I can help with token creation, authorities, and liquidity pools!",
-      "Let's create your token with proper authority controls and get it listed on Raydium! What's your idea?",
-      "I can create production-ready tokens with mint/freeze authority controls. What token should we build?"
+      "I'm here to help you create real Solana tokens! Try saying something like 'Create a token called MyToken with symbol MT and 5 million supply'",
+      "Ready to build on Solana? Tell me your token name, symbol, and how many tokens you want to create!",
+      "Let's create your token with proper authority controls! What's your token idea?",
+      "I can help with token creation, supply amounts, authority settings, and Raydium liquidity. What would you like to know?"
     ];
 
     return {
@@ -149,17 +178,25 @@ const ChatInterface = () => {
   };
 
   const extractTokenName = (text: string) => {
-    const nameMatch = text.match(/name[:\s]+([A-Za-z\s]+)/i);
+    const nameMatch = text.match(/(?:name[:\s]+|called\s+)([A-Za-z\s]+)/i);
     return nameMatch ? nameMatch[1].trim() : null;
   };
 
   const extractTokenSymbol = (text: string) => {
-    const symbolMatch = text.match(/symbol[:\s]+([A-Z]{2,5})/i) || text.match(/\b([A-Z]{2,5})\b/);
+    const symbolMatch = text.match(/(?:symbol[:\s]+|ticker[:\s]+)([A-Z]{2,5})/i) || text.match(/\b([A-Z]{2,5})\b/);
     return symbolMatch ? symbolMatch[1] : null;
   };
 
   const extractTokenSupply = (text: string) => {
-    const supplyMatch = text.match(/(\d+(?:,\d+)*)\s*(?:tokens?|supply)/i);
+    // Handle "million", "billion" etc.
+    const millionMatch = text.match(/(\d+(?:\.\d+)?)\s*million/i);
+    if (millionMatch) return Math.floor(parseFloat(millionMatch[1]) * 1000000);
+    
+    const billionMatch = text.match(/(\d+(?:\.\d+)?)\s*billion/i);
+    if (billionMatch) return Math.floor(parseFloat(billionMatch[1]) * 1000000000);
+    
+    // Handle regular numbers
+    const supplyMatch = text.match(/(\d+(?:,\d+)*)\s*(?:tokens?|supply)/i) || text.match(/supply[:\s]*(\d+(?:,\d+)*)/i);
     return supplyMatch ? parseInt(supplyMatch[1].replace(/,/g, '')) : null;
   };
 
@@ -247,7 +284,7 @@ const ChatInterface = () => {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Ask about token creation, authorities, liquidity pools... (e.g., 'Create a token with revoked mint authority')"
+              placeholder="Try: 'Create MyToken with 5 million supply' or 'Change supply to 10 million'"
               className="flex-1 bg-white/10 border-white/20 text-white placeholder-white/60 focus:border-purple-400"
             />
             <Button
@@ -264,7 +301,11 @@ const ChatInterface = () => {
       {/* Token Creation Panel */}
       {currentTokenData && (
         <div className="mt-6">
-          <TokenCreationPanel tokenData={currentTokenData} wallet={wallet} />
+          <TokenCreationPanel 
+            tokenData={currentTokenData} 
+            wallet={wallet}
+            onTokenDataChange={handleTokenDataChange}
+          />
         </div>
       )}
     </div>
