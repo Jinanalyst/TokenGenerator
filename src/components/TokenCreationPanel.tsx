@@ -18,7 +18,9 @@ import {
   Shield,
   Lock,
   Droplets,
-  Edit3
+  Edit3,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useSolana } from '../hooks/useSolana';
@@ -34,6 +36,7 @@ interface TokenCreationPanelProps {
     revokeMintAuthority?: boolean;
     revokeFreezeAuthority?: boolean;
     revokeUpdateAuthority?: boolean;
+    image?: string;
   };
   wallet?: any;
   onTokenDataChange?: (data: any) => void;
@@ -48,6 +51,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
   const [isCreated, setIsCreated] = useState(false);
   const [tokenResult, setTokenResult] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   
   // Local editable state
   const [editableData, setEditableData] = useState({
@@ -59,6 +63,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     revokeMintAuthority: tokenData.revokeMintAuthority || false,
     revokeFreezeAuthority: tokenData.revokeFreezeAuthority || false,
     revokeUpdateAuthority: tokenData.revokeUpdateAuthority || false,
+    image: tokenData.image || '',
   });
   
   const { toast } = useToast();
@@ -75,7 +80,9 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
       revokeMintAuthority: tokenData.revokeMintAuthority || false,
       revokeFreezeAuthority: tokenData.revokeFreezeAuthority || false,
       revokeUpdateAuthority: tokenData.revokeUpdateAuthority || false,
+      image: tokenData.image || '',
     });
+    setImagePreview(tokenData.image || null);
   }, [tokenData]);
 
   const handleInputChange = (field: string, value: any) => {
@@ -93,6 +100,39 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     
     if (onTokenDataChange) {
       onTokenDataChange(updatedData);
+    }
+  };
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Check file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please choose an image smaller than 2MB",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        toast({
+          title: "Invalid file type",
+          description: "Please choose an image file",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const imageUrl = e.target?.result as string;
+        setImagePreview(imageUrl);
+        handleInputChange('image', imageUrl);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -126,6 +166,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
         symbol: editableData.symbol,
         decimals: editableData.decimals,
         supply: editableData.supply,
+        image: editableData.image,
         revokeMintAuthority: editableData.revokeMintAuthority,
         revokeFreezeAuthority: editableData.revokeFreezeAuthority,
         revokeUpdateAuthority: editableData.revokeUpdateAuthority
@@ -220,6 +261,52 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           <p className="text-blue-200 text-sm mt-1">
             This fee supports the platform and ensures quality token creation
           </p>
+        </div>
+
+        {/* Token Logo Section */}
+        <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+          <div className="flex items-center space-x-2 mb-3">
+            <ImageIcon className="w-4 h-4 text-pink-400" />
+            <span className="text-pink-200 text-sm">Token Logo</span>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            {/* Image Preview */}
+            <div className="w-20 h-20 bg-white/10 rounded-lg border-2 border-dashed border-white/20 flex items-center justify-center overflow-hidden">
+              {imagePreview ? (
+                <img 
+                  src={imagePreview} 
+                  alt="Token logo preview" 
+                  className="w-full h-full object-cover rounded-lg"
+                />
+              ) : (
+                <ImageIcon className="w-8 h-8 text-white/40" />
+              )}
+            </div>
+            
+            {/* Upload Button */}
+            {(isEditing || !editableData.image) && (
+              <div className="flex-1">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                  id="token-image-upload"
+                />
+                <label
+                  htmlFor="token-image-upload"
+                  className="cursor-pointer inline-flex items-center space-x-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 px-4 py-2 rounded-lg border border-purple-500/30 transition-colors"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>Upload Logo</span>
+                </label>
+                <p className="text-xs text-gray-400 mt-1">
+                  PNG, JPG, GIF up to 2MB
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Token Details */}
@@ -398,6 +485,17 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
                 </Button>
               </div>
               <p className="text-green-100 font-mono text-sm break-all">{tokenResult.mintAddress}</p>
+            </div>
+
+            <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-500/30">
+              <div className="flex items-center space-x-2 mb-2">
+                <ExternalLink className="w-4 h-4 text-blue-400" />
+                <span className="text-blue-300 font-semibold">DEXScreener Listing</span>
+              </div>
+              <p className="text-blue-200 text-sm">
+                Your token will appear on DEXScreener automatically once it has trading activity and liquidity pools. 
+                Create a liquidity pool to enable trading!
+              </p>
             </div>
 
             <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-3">
