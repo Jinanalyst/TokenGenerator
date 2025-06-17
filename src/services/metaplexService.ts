@@ -1,4 +1,3 @@
-
 import { 
   Connection, 
   PublicKey, 
@@ -71,19 +70,17 @@ export class MetaplexService {
         rent: SYSVAR_RENT_PUBKEY,
       },
       {
-        createMetadataAccountV3InstructionData: {
-          data: {
-            name: metadata.name,
-            symbol: metadata.symbol,
-            uri: metadata.uri,
-            sellerFeeBasisPoints: metadata.sellerFeeBasisPoints,
-            creators: metadata.creators || null,
-            collection: metadata.collection || null,
-            uses: metadata.uses || null,
-          },
-          isMutable: true,
-          collectionDetails: null,
+        data: {
+          name: metadata.name,
+          symbol: metadata.symbol,
+          uri: metadata.uri,
+          sellerFeeBasisPoints: metadata.sellerFeeBasisPoints,
+          creators: metadata.creators || null,
+          collection: metadata.collection || null,
+          uses: metadata.uses || null,
         },
+        isMutable: true,
+        collectionDetails: null,
       }
     );
 
