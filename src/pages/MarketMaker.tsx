@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,12 +24,14 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useSolana } from '../hooks/useSolana';
 import { useMarketMaker } from '../hooks/useMarketMaker';
+import { usePaymentProcessor } from '../hooks/usePaymentProcessor';
 
 const MarketMaker = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { createBot } = useMarketMaker();
+  const { processPayment, isProcessing } = usePaymentProcessor();
   
   // Token data from URL params
   const tokenMintAddress = searchParams.get('mint');
@@ -109,17 +110,10 @@ const MarketMaker = () => {
     try {
       const price = calculatePrice();
       
-      // Create payment transaction to fee recipient
-      const feeRecipientAddress = '2zmewxtyL83t6WLkSPpQtdDiK5Nmd5KSn71HKC7TEGcU';
-      
-      // In a real implementation, this would create a Solana transaction
-      // For now, we'll simulate the payment process
-      console.log(`Creating payment of ${price} SOL to ${feeRecipientAddress}`);
-      
-      // Store bot configuration in database
+      // Create bot in database first
       const botData = await createBot({
         user_id: 'placeholder-user-id', // This would come from auth context
-        token_mint_address: tokenMintAddress,
+        token_mint_address: tokenMintAddress!,
         token_symbol: tokenSymbol!,
         token_name: tokenName!,
         package_size: botConfig.packageSize,
@@ -132,19 +126,24 @@ const MarketMaker = () => {
         status: 'pending'
       });
 
-      toast({
-        title: "Market Maker Bot Created! 🤖",
-        description: `Your bot will start generating volume for ${tokenSymbol} shortly`,
-      });
+      // Process real payment
+      const paymentResult = await processPayment(botData.id, wallet);
+      
+      if (paymentResult.success) {
+        toast({
+          title: "Market Maker Bot Activated! 🤖",
+          description: `Payment confirmed. Your bot is now generating volume for ${tokenSymbol}`,
+        });
 
-      // Navigate to bot dashboard
-      navigate(`/market-maker/dashboard?botId=${botData.id}`);
+        // Navigate to bot dashboard
+        navigate(`/market-maker/dashboard?botId=${botData.id}`);
+      }
       
     } catch (error) {
       console.error('Bot creation failed:', error);
       toast({
         title: "Creation Failed",
-        description: "Failed to create market maker bot. Please try again.",
+        description: error.message || "Failed to create market maker bot. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -403,13 +402,13 @@ const MarketMaker = () => {
                   {/* Action Button */}
                   <Button
                     onClick={handleCreateBot}
-                    disabled={isCreating || !wallet}
+                    disabled={isCreating || isProcessing || !wallet}
                     className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white py-4 text-lg font-semibold"
                   >
-                    {isCreating ? (
+                    {isCreating || isProcessing ? (
                       <div className="flex items-center space-x-2">
                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        <span>Creating Bot...</span>
+                        <span>{isProcessing ? 'Processing Payment...' : 'Creating Bot...'}</span>
                       </div>
                     ) : !wallet ? (
                       <div className="flex items-center space-x-2">
@@ -419,7 +418,7 @@ const MarketMaker = () => {
                     ) : (
                       <div className="flex items-center space-x-2">
                         <Play className="w-5 h-5" />
-                        <span>Launch Market Maker Bot</span>
+                        <span>Launch Market Maker Bot (Pay {calculatePrice().toFixed(2)} SOL)</span>
                       </div>
                     )}
                   </Button>
@@ -430,8 +429,8 @@ const MarketMaker = () => {
             {/* Disclaimer */}
             <Card className="bg-orange-500/10 backdrop-blur-lg border-orange-500/30 p-4 mt-8">
               <p className="text-orange-200 text-sm text-center">
-                <strong>Disclaimer:</strong> Market maker bots involve real trading with actual funds. 
-                Past performance does not guarantee future results. Trade responsibly and only risk what you can afford to lose.
+                <strong>Notice:</strong> Market maker bots process real payments and generate actual trading volume on Solana DEX platforms. 
+                Payments are processed immediately upon confirmation. All transactions are recorded on the blockchain and cannot be reversed.
               </p>
             </Card>
           </div>
