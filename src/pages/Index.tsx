@@ -1,6 +1,9 @@
 
 import React from 'react';
 import ChatInterface from '../components/ChatInterface';
+import { Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 const Index = () => {
   return (
@@ -12,19 +15,30 @@ const Index = () => {
       
       {/* Header */}
       <div className="relative z-10 pt-8 pb-4">
-        <div className="container mx-auto px-4 text-center">
-          <div className="flex items-center justify-center space-x-3 mb-4">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-r from-purple-400 to-blue-400 flex items-center justify-center">
-              <span className="text-white font-bold text-xl">AI</span>
-            </div>
-            <h1 className="text-4xl font-bold text-white">
-              Solana Token Generator AI
-            </h1>
+        <div className="container mx-auto px-4">
+          <div className="flex items-center justify-between mb-4">
+            <Link to="/">
+              <Button variant="outline" size="sm" className="border-purple-300 text-purple-300 hover:bg-purple-300 hover:text-purple-900 backdrop-blur-sm">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Home
+              </Button>
+            </Link>
           </div>
-          <p className="text-purple-200 text-lg max-w-2xl mx-auto">
-            Chat with our AI agent to create custom Solana tokens effortlessly. 
-            Just describe what you want, and watch the magic happen!
-          </p>
+          
+          <div className="text-center">
+            <div className="flex items-center justify-center space-x-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-r from-purple-400 to-blue-400 flex items-center justify-center">
+                <span className="text-white font-bold text-xl">AI</span>
+              </div>
+              <h1 className="text-4xl font-bold text-white">
+                Solana Token Generator AI
+              </h1>
+            </div>
+            <p className="text-purple-200 text-lg max-w-2xl mx-auto">
+              Chat with our AI agent to create custom Solana tokens effortlessly. 
+              Just describe what you want, and watch the magic happen!
+            </p>
+          </div>
         </div>
       </div>
 
