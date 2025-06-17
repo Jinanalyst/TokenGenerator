@@ -12,6 +12,7 @@ import {
   Zap, 
   CheckCircle,
   AlertCircle,
+  AlertTriangle,
   Copy,
   ExternalLink,
   Shield,
@@ -197,7 +198,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({ tokenData, wall
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   checked={revokeMintAuthority}
-                  onCheckedChange={setRevokeMintAuthority}
+                  onCheckedChange={(checked) => setRevokeMintAuthority(checked === true)}
                   id="revoke-mint"
                 />
                 <label htmlFor="revoke-mint" className="text-sm text-gray-300 cursor-pointer">
@@ -207,7 +208,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({ tokenData, wall
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   checked={revokeFreezeAuthority}
-                  onCheckedChange={setRevokeFreezeAuthority}
+                  onCheckedChange={(checked) => setRevokeFreezeAuthority(checked === true)}
                   id="revoke-freeze"
                 />
                 <label htmlFor="revoke-freeze" className="text-sm text-gray-300 cursor-pointer">
@@ -217,7 +218,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({ tokenData, wall
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   checked={revokeUpdateAuthority}
-                  onCheckedChange={setRevokeUpdateAuthority}
+                  onCheckedChange={(checked) => setRevokeUpdateAuthority(checked === true)}
                   id="revoke-update"
                 />
                 <label htmlFor="revoke-update" className="text-sm text-gray-300 cursor-pointer">
