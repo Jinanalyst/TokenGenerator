@@ -1,3 +1,4 @@
+
 import { 
   Connection, 
   PublicKey, 
@@ -8,9 +9,8 @@ import {
 import {
   createCreateMetadataAccountV3Instruction,
   CreateMetadataAccountV3InstructionAccounts,
-  CreateMetadataAccountV3InstructionArgs,
-  PROGRAM_ID as MPL_TOKEN_METADATA_PROGRAM_ID,
-  DataV2
+  DataV2,
+  PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID
 } from '@metaplex-foundation/mpl-token-metadata';
 import { IPFSService } from './ipfsService';
 
@@ -46,10 +46,10 @@ export class MetaplexService {
     const [metadataAddress] = PublicKey.findProgramAddressSync(
       [
         Buffer.from('metadata'),
-        MPL_TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+        TOKEN_METADATA_PROGRAM_ID.toBuffer(),
         mintPublicKey.toBuffer(),
       ],
-      MPL_TOKEN_METADATA_PROGRAM_ID
+      TOKEN_METADATA_PROGRAM_ID
     );
     return metadataAddress;
   }
@@ -81,10 +81,12 @@ export class MetaplexService {
       uses: metadata.uses || null,
     };
 
-    const args: CreateMetadataAccountV3InstructionArgs = {
-      data: dataV2,
-      isMutable: true,
-      collectionDetails: null,
+    const args = {
+      createMetadataAccountArgsV3: {
+        data: dataV2,
+        isMutable: true,
+        collectionDetails: null,
+      },
     };
 
     const createMetadataInstruction = createCreateMetadataAccountV3Instruction(
