@@ -1,4 +1,3 @@
-
 import { 
   Connection, 
   PublicKey, 
@@ -9,8 +8,7 @@ import {
 import {
   createCreateMetadataAccountV3Instruction,
   MPL_TOKEN_METADATA_PROGRAM_ID,
-  CreateMetadataAccountV3InstructionAccounts,
-  CreateMetadataAccountV3InstructionArgs
+  CreateMetadataAccountArgsV3
 } from '@metaplex-foundation/mpl-token-metadata';
 import { IPFSService } from './ipfsService';
 
@@ -61,7 +59,21 @@ export class MetaplexService {
   ): Promise<Transaction> {
     const metadataAddress = MetaplexService.getMetadataAddress(mintPublicKey);
 
-    const accounts: CreateMetadataAccountV3InstructionAccounts = {
+    const args: CreateMetadataAccountArgsV3 = {
+      data: {
+        name: metadata.name,
+        symbol: metadata.symbol,
+        uri: metadata.uri,
+        sellerFeeBasisPoints: metadata.sellerFeeBasisPoints,
+        creators: metadata.creators || null,
+        collection: metadata.collection || null,
+        uses: metadata.uses || null,
+      },
+      isMutable: true,
+      collectionDetails: null,
+    };
+
+    const createMetadataInstruction = createCreateMetadataAccountV3Instruction({
       metadata: metadataAddress,
       mint: mintPublicKey,
       mintAuthority: payerPublicKey,
@@ -69,28 +81,9 @@ export class MetaplexService {
       updateAuthority: payerPublicKey,
       systemProgram: SystemProgram.programId,
       rent: SYSVAR_RENT_PUBKEY,
-    };
-
-    const args: CreateMetadataAccountV3InstructionArgs = {
-      createMetadataAccountArgsV3: {
-        data: {
-          name: metadata.name,
-          symbol: metadata.symbol,
-          uri: metadata.uri,
-          sellerFeeBasisPoints: metadata.sellerFeeBasisPoints,
-          creators: metadata.creators || null,
-          collection: metadata.collection || null,
-          uses: metadata.uses || null,
-        },
-        isMutable: true,
-        collectionDetails: null,
-      }
-    };
-
-    const createMetadataInstruction = createCreateMetadataAccountV3Instruction(
-      accounts,
-      args
-    );
+    }, {
+      data: args
+    });
 
     const transaction = new Transaction().add(createMetadataInstruction);
     return transaction;
