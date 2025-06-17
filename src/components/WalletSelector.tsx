@@ -38,12 +38,6 @@ const SUPPORTED_WALLETS: WalletOption[] = [
     icon: '🎒',
     adapter: 'backpack',
     url: 'https://www.backpack.app/'
-  },
-  {
-    name: 'Glow',
-    icon: '✨',
-    adapter: 'glow',
-    url: 'https://glow.app/'
   }
 ];
 
@@ -63,22 +57,38 @@ const WalletSelector: React.FC<WalletSelectorProps> = ({ onWalletChange }) => {
   }, []);
 
   const checkAvailableWallets = () => {
-    const { solana } = window as any;
     const available: WalletOption[] = [];
 
-    SUPPORTED_WALLETS.forEach(walletOption => {
-      if (walletOption.adapter === 'phantom' && solana?.isPhantom) {
-        available.push(walletOption);
-      } else if (walletOption.adapter === 'solflare' && solana?.isSolflare) {
-        available.push(walletOption);
-      } else if (walletOption.adapter === 'backpack' && solana?.isBackpack) {
-        available.push(walletOption);
-      } else if (walletOption.adapter === 'glow' && solana?.isGlow) {
-        available.push(walletOption);
+    // Check for available wallets using standard detection methods
+    if (typeof window !== 'undefined') {
+      // Phantom
+      if (window.phantom?.solana?.isPhantom) {
+        available.push(SUPPORTED_WALLETS[0]);
       }
-    });
+      
+      // Solflare
+      if (window.solflare?.isSolflare) {
+        available.push(SUPPORTED_WALLETS[1]);
+      }
+      
+      // Backpack
+      if (window.backpack?.isBackpack) {
+        available.push(SUPPORTED_WALLETS[2]);
+      }
+    }
 
     setAvailableWallets(available);
+  };
+
+  const getWalletProvider = () => {
+    if (selectedWallet === 'phantom') {
+      return window.phantom?.solana;
+    } else if (selectedWallet === 'solflare') {
+      return window.solflare;
+    } else if (selectedWallet === 'backpack') {
+      return window.backpack;
+    }
+    return null;
   };
 
   const connectWallet = async () => {
@@ -87,28 +97,28 @@ const WalletSelector: React.FC<WalletSelectorProps> = ({ onWalletChange }) => {
     setIsConnecting(true);
     
     try {
-      const { solana } = window as any;
+      const provider = getWalletProvider();
       
-      if (!solana) {
+      if (!provider) {
         toast({
-          title: "No Wallet Found",
-          description: "Please install a Solana wallet to continue",
+          title: "Wallet Not Found",
+          description: `Please install ${selectedWallet} wallet to continue`,
           variant: "destructive"
         });
         return;
       }
 
-      // Use the standard connection method without triggering security warnings
-      const response = await solana.connect({ onlyIfTrusted: false });
+      // Use the trusted connection method with proper error handling
+      const response = await provider.connect();
       
       if (response?.publicKey) {
         const walletInfo = {
           publicKey: response.publicKey.toString(),
           connected: true,
-          adapter: solana,
+          adapter: provider,
           type: selectedWallet,
-          signTransaction: solana.signTransaction,
-          signAllTransactions: solana.signAllTransactions,
+          signTransaction: provider.signTransaction?.bind(provider),
+          signAllTransactions: provider.signAllTransactions?.bind(provider),
         };
         
         setWallet(walletInfo);
@@ -143,8 +153,9 @@ const WalletSelector: React.FC<WalletSelectorProps> = ({ onWalletChange }) => {
 
   const disconnectWallet = async () => {
     try {
-      if (wallet?.adapter?.disconnect) {
-        await wallet.adapter.disconnect();
+      const provider = getWalletProvider();
+      if (provider?.disconnect) {
+        await provider.disconnect();
       }
       setWallet(null);
       onWalletChange(null);

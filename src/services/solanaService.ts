@@ -1,3 +1,4 @@
+
 import { 
   Connection, 
   PublicKey, 
@@ -44,10 +45,18 @@ export interface TokenCreationResult {
   explorerUrl: string;
 }
 
+export interface TransactionTest {
+  success: boolean;
+  errors?: string[];
+  estimatedFee?: number;
+  balanceCheck?: boolean;
+  connectionStatus?: boolean;
+}
+
 export class SolanaService {
   private connection: Connection;
   private network: 'mainnet' | 'devnet';
-  private static readonly TOKEN_CREATION_FEE = 0.02 * LAMPORTS_PER_SOL; // 0.02 SOL in lamports
+  private static readonly TOKEN_CREATION_FEE = 0.02 * LAMPORTS_PER_SOL;
 
   constructor(rpcUrl: string, network: 'mainnet' | 'devnet') {
     this.connection = new Connection(rpcUrl, 'confirmed');
@@ -71,37 +80,104 @@ export class SolanaService {
     return balance / LAMPORTS_PER_SOL;
   }
 
+  async testTransactionReadiness(
+    wallet: any,
+    metadata: TokenMetadata
+  ): Promise<TransactionTest> {
+    const errors: string[] = [];
+    let estimatedFee = 0;
+
+    try {
+      // Test connection
+      const connectionStatus = await this.checkConnection();
+      if (!connectionStatus) {
+        errors.push('Network connection failed');
+      }
+
+      // Validate wallet
+      if (!wallet || !wallet.publicKey) {
+        errors.push('Wallet not connected');
+        return { success: false, errors, connectionStatus };
+      }
+
+      const walletPublicKey = typeof wallet.publicKey === 'string' 
+        ? new PublicKey(wallet.publicKey) 
+        : wallet.publicKey;
+
+      // Check balance
+      const balance = await this.getBalance(walletPublicKey);
+      const requiredBalance = (SolanaService.TOKEN_CREATION_FEE / LAMPORTS_PER_SOL) + 0.01;
+      const balanceCheck = balance >= requiredBalance;
+      
+      if (!balanceCheck) {
+        errors.push(`Insufficient balance. Need ${requiredBalance} SOL, have ${balance.toFixed(4)} SOL`);
+      }
+
+      // Estimate transaction fees
+      try {
+        const { blockhash } = await this.connection.getLatestBlockhash();
+        const testTransaction = new Transaction();
+        testTransaction.recentBlockhash = blockhash;
+        testTransaction.feePayer = walletPublicKey;
+        
+        const feeEstimate = await this.connection.getFeeForMessage(testTransaction.compileMessage());
+        estimatedFee = (feeEstimate?.value || 5000) / LAMPORTS_PER_SOL;
+      } catch (error) {
+        errors.push('Failed to estimate transaction fees');
+      }
+
+      // Validate metadata inputs
+      const nameValidation = validateTokenName(metadata.name);
+      if (!nameValidation.isValid) {
+        errors.push(`Name: ${nameValidation.error}`);
+      }
+
+      const symbolValidation = validateTokenSymbol(metadata.symbol);
+      if (!symbolValidation.isValid) {
+        errors.push(`Symbol: ${symbolValidation.error}`);
+      }
+
+      const supplyValidation = validateTokenSupply(metadata.supply);
+      if (!supplyValidation.isValid) {
+        errors.push(`Supply: ${supplyValidation.error}`);
+      }
+
+      const decimalsValidation = validateDecimals(metadata.decimals);
+      if (!decimalsValidation.isValid) {
+        errors.push(`Decimals: ${decimalsValidation.error}`);
+      }
+
+      // Check rate limiting
+      const walletKey = walletPublicKey.toString();
+      if (!rateLimiter.isAllowed(`token_creation_${walletKey}`, 3, 300000)) {
+        const remainingTime = Math.ceil(rateLimiter.getRemainingTime(`token_creation_${walletKey}`) / 1000);
+        errors.push(`Rate limit exceeded. Wait ${remainingTime} seconds`);
+      }
+
+      return {
+        success: errors.length === 0,
+        errors: errors.length > 0 ? errors : undefined,
+        estimatedFee,
+        balanceCheck,
+        connectionStatus
+      };
+
+    } catch (error) {
+      console.error('Transaction test failed:', error);
+      errors.push('Transaction readiness test failed');
+      return { success: false, errors, connectionStatus: false };
+    }
+  }
+
   async createToken(
     wallet: any,
     metadata: TokenMetadata
   ): Promise<TokenCreationResult> {
     try {
-      // Validate all inputs before proceeding
-      const nameValidation = validateTokenName(metadata.name);
-      if (!nameValidation.isValid) {
-        throw new Error(nameValidation.error);
-      }
-
-      const symbolValidation = validateTokenSymbol(metadata.symbol);
-      if (!symbolValidation.isValid) {
-        throw new Error(symbolValidation.error);
-      }
-
-      const supplyValidation = validateTokenSupply(metadata.supply);
-      if (!supplyValidation.isValid) {
-        throw new Error(supplyValidation.error);
-      }
-
-      const decimalsValidation = validateDecimals(metadata.decimals);
-      if (!decimalsValidation.isValid) {
-        throw new Error(decimalsValidation.error);
-      }
-
-      // Rate limiting check
-      const walletKey = wallet.publicKey?.toString() || 'unknown';
-      if (!rateLimiter.isAllowed(`token_creation_${walletKey}`, 3, 300000)) { // 3 attempts per 5 minutes
-        const remainingTime = Math.ceil(rateLimiter.getRemainingTime(`token_creation_${walletKey}`) / 1000);
-        throw new Error(`Rate limit exceeded. Please wait ${remainingTime} seconds before creating another token`);
+      // First run readiness test
+      const testResult = await this.testTransactionReadiness(wallet, metadata);
+      if (!testResult.success) {
+        throw new Error(testResult.errors?.join(', ') || 'Transaction readiness test failed');
       }
 
       console.log('Creating token with validated metadata:', {
@@ -111,25 +187,31 @@ export class SolanaService {
         supply: metadata.supply
       });
 
-      // Ensure wallet publicKey is a PublicKey object
       const walletPublicKey = typeof wallet.publicKey === 'string' 
         ? new PublicKey(wallet.publicKey) 
         : wallet.publicKey;
-      
-      // Check if payer has enough balance for fee + transaction costs
-      const payerBalance = await this.getBalance(walletPublicKey);
-      const requiredBalance = (SolanaService.TOKEN_CREATION_FEE / LAMPORTS_PER_SOL) + 0.01; // 0.01 SOL buffer for transaction costs
-      
-      if (payerBalance < requiredBalance) {
-        throw new Error(`Insufficient balance. Need at least ${requiredBalance} SOL, but have ${payerBalance} SOL`);
-      }
 
-      // Use secure fee recipient
       const feeRecipient = SecurityConfig.getFeeRecipient();
 
-      // Step 1: Create and send fee payment transaction
-      console.log('Sending token creation fee of 0.02 SOL...');
-      const feeTransaction = new Transaction().add(
+      // Step 1: Create optimized transaction batch
+      console.log('Creating optimized transaction batch...');
+      
+      // Get fresh blockhash
+      const { blockhash } = await this.connection.getLatestBlockhash('confirmed');
+
+      // Generate mint keypair
+      const mintKeypair = Keypair.generate();
+      
+      // Calculate rent exemption
+      const mintRent = await this.connection.getMinimumBalanceForRentExemption(82);
+
+      // Create combined transaction for mint creation and initialization
+      const createAndInitTransaction = new Transaction();
+      createAndInitTransaction.recentBlockhash = blockhash;
+      createAndInitTransaction.feePayer = walletPublicKey;
+
+      // Add fee payment
+      createAndInitTransaction.add(
         SystemProgram.transfer({
           fromPubkey: walletPublicKey,
           toPubkey: feeRecipient,
@@ -137,134 +219,127 @@ export class SolanaService {
         })
       );
 
-      const { blockhash } = await this.connection.getLatestBlockhash();
-      feeTransaction.recentBlockhash = blockhash;
-      feeTransaction.feePayer = walletPublicKey;
-
-      const signedFeeTransaction = await wallet.adapter.signTransaction(feeTransaction);
-      const feeSignature = await this.connection.sendRawTransaction(signedFeeTransaction.serialize());
-      await this.connection.confirmTransaction(feeSignature);
-      console.log('Fee payment confirmed:', feeSignature);
-
-      // Step 2: Create mint account and initialize
-      const mintKeypair = Keypair.generate();
-      const mintRent = await this.connection.getMinimumBalanceForRentExemption(82);
-      
-      const createMintTransaction = new Transaction().add(
+      // Add mint account creation
+      createAndInitTransaction.add(
         SystemProgram.createAccount({
           fromPubkey: walletPublicKey,
           newAccountPubkey: mintKeypair.publicKey,
           space: 82,
           lamports: mintRent,
           programId: TOKEN_PROGRAM_ID,
-        }),
+        })
+      );
+
+      // Add mint initialization
+      createAndInitTransaction.add(
         createInitializeMintInstruction(
           mintKeypair.publicKey,
           metadata.decimals,
-          walletPublicKey, // mint authority
-          walletPublicKey  // freeze authority
+          walletPublicKey,
+          walletPublicKey
         )
       );
 
-      const { blockhash: mintBlockhash } = await this.connection.getLatestBlockhash();
-      createMintTransaction.recentBlockhash = mintBlockhash;
-      createMintTransaction.feePayer = walletPublicKey;
-      createMintTransaction.partialSign(mintKeypair);
+      // Partial sign with mint keypair
+      createAndInitTransaction.partialSign(mintKeypair);
 
-      const signedMintTransaction = await wallet.adapter.signTransaction(createMintTransaction);
-      const mintSignature = await this.connection.sendRawTransaction(signedMintTransaction.serialize());
-      await this.connection.confirmTransaction(mintSignature);
-      console.log('Mint created:', mintKeypair.publicKey.toBase58());
+      // Request wallet signature
+      console.log('Requesting wallet signature for mint creation...');
+      const signedCreateTransaction = await wallet.adapter.signTransaction(createAndInitTransaction);
+      const createSignature = await this.connection.sendRawTransaction(signedCreateTransaction.serialize());
+      
+      // Confirm with timeout
+      const createConfirmation = await this.connection.confirmTransaction({
+        signature: createSignature,
+        blockhash: blockhash,
+        lastValidBlockHeight: (await this.connection.getLatestBlockhash()).lastValidBlockHeight
+      });
 
-      // Step 3: Create associated token account
+      if (createConfirmation.value.err) {
+        throw new Error('Mint creation transaction failed');
+      }
+
+      console.log('Mint created successfully:', mintKeypair.publicKey.toBase58());
+
+      // Step 2: Create token account and mint tokens in single transaction
+      const { blockhash: mintBlockhash } = await this.connection.getLatestBlockhash('confirmed');
+      
       const associatedTokenAddress = await getAssociatedTokenAddress(
         mintKeypair.publicKey,
         walletPublicKey
       );
 
-      const createTokenAccountTransaction = new Transaction().add(
+      const mintTransaction = new Transaction();
+      mintTransaction.recentBlockhash = mintBlockhash;
+      mintTransaction.feePayer = walletPublicKey;
+
+      // Add create associated token account
+      mintTransaction.add(
         createAssociatedTokenAccountInstruction(
-          walletPublicKey, // payer
-          associatedTokenAddress, // associated token account
-          walletPublicKey, // owner
-          mintKeypair.publicKey // mint
+          walletPublicKey,
+          associatedTokenAddress,
+          walletPublicKey,
+          mintKeypair.publicKey
         )
       );
 
-      const { blockhash: tokenAccountBlockhash } = await this.connection.getLatestBlockhash();
-      createTokenAccountTransaction.recentBlockhash = tokenAccountBlockhash;
-      createTokenAccountTransaction.feePayer = walletPublicKey;
-
-      const signedTokenAccountTransaction = await wallet.adapter.signTransaction(createTokenAccountTransaction);
-      const tokenAccountSignature = await this.connection.sendRawTransaction(signedTokenAccountTransaction.serialize());
-      await this.connection.confirmTransaction(tokenAccountSignature);
-      console.log('Token account created:', associatedTokenAddress.toBase58());
-
-      // Step 4: Mint tokens to the associated token account
-      const mintToTransaction = new Transaction().add(
+      // Add mint to instruction
+      mintTransaction.add(
         createMintToInstruction(
           mintKeypair.publicKey,
           associatedTokenAddress,
-          walletPublicKey, // mint authority
+          walletPublicKey,
           metadata.supply * Math.pow(10, metadata.decimals)
         )
       );
 
-      const { blockhash: mintToBlockhash } = await this.connection.getLatestBlockhash();
-      mintToTransaction.recentBlockhash = mintToBlockhash;
-      mintToTransaction.feePayer = walletPublicKey;
-
-      const signedMintToTransaction = await wallet.adapter.signTransaction(mintToTransaction);
-      const mintToSignature = await this.connection.sendRawTransaction(signedMintToTransaction.serialize());
-      await this.connection.confirmTransaction(mintToSignature);
-      console.log('Tokens minted, signature:', mintToSignature);
-
-      // Step 5: Handle authority revocations if requested
-      if (metadata.revokeMintAuthority || metadata.revokeFreezeAuthority) {
-        const revokeTransaction = new Transaction();
-
-        if (metadata.revokeMintAuthority) {
-          console.log('Revoking mint authority...');
-          revokeTransaction.add(
-            createSetAuthorityInstruction(
-              mintKeypair.publicKey,
-              walletPublicKey, // current authority
-              AuthorityType.MintTokens,
-              null // new authority (null = revoke)
-            )
-          );
-        }
-
-        if (metadata.revokeFreezeAuthority) {
-          console.log('Revoking freeze authority...');
-          revokeTransaction.add(
-            createSetAuthorityInstruction(
-              mintKeypair.publicKey,
-              walletPublicKey, // current authority
-              AuthorityType.FreezeAccount,
-              null // new authority (null = revoke)
-            )
-          );
-        }
-
-        if (revokeTransaction.instructions.length > 0) {
-          const { blockhash: revokeBlockhash } = await this.connection.getLatestBlockhash();
-          revokeTransaction.recentBlockhash = revokeBlockhash;
-          revokeTransaction.feePayer = walletPublicKey;
-
-          const signedRevokeTransaction = await wallet.adapter.signTransaction(revokeTransaction);
-          const revokeSignature = await this.connection.sendRawTransaction(signedRevokeTransaction.serialize());
-          await this.connection.confirmTransaction(revokeSignature);
-          console.log('Authorities revoked:', revokeSignature);
-        }
+      // Add authority revocations if requested
+      if (metadata.revokeMintAuthority) {
+        mintTransaction.add(
+          createSetAuthorityInstruction(
+            mintKeypair.publicKey,
+            walletPublicKey,
+            AuthorityType.MintTokens,
+            null
+          )
+        );
       }
+
+      if (metadata.revokeFreezeAuthority) {
+        mintTransaction.add(
+          createSetAuthorityInstruction(
+            mintKeypair.publicKey,
+            walletPublicKey,
+            AuthorityType.FreezeAccount,
+            null
+          )
+        );
+      }
+
+      // Request final wallet signature
+      console.log('Requesting wallet signature for token creation...');
+      const signedMintTransaction = await wallet.adapter.signTransaction(mintTransaction);
+      const mintSignature = await this.connection.sendRawTransaction(signedMintTransaction.serialize());
+      
+      // Confirm final transaction
+      const mintConfirmation = await this.connection.confirmTransaction({
+        signature: mintSignature,
+        blockhash: mintBlockhash,
+        lastValidBlockHeight: (await this.connection.getLatestBlockhash()).lastValidBlockHeight
+      });
+
+      if (mintConfirmation.value.err) {
+        throw new Error('Token minting transaction failed');
+      }
+
+      console.log('Token creation completed successfully!');
 
       const explorerUrl = this.getExplorerUrl(mintKeypair.publicKey.toBase58());
 
       return {
         mintAddress: mintKeypair.publicKey.toBase58(),
         tokenAccountAddress: associatedTokenAddress.toBase58(),
-        transactionSignature: mintToSignature,
+        transactionSignature: mintSignature,
         explorerUrl
       };
 
@@ -286,15 +361,6 @@ export class SolanaService {
       ? 'https://raydium.io/liquidity/create'
       : 'https://raydium.io/liquidity/create/?cluster=devnet';
     return `${baseUrl}/?token=${mintAddress}`;
-  }
-
-  // Legacy method for backward compatibility
-  async simulateTokenCreation(metadata: TokenMetadata) {
-    return {
-      success: true,
-      message: 'Use createToken method for real token creation',
-      metadata
-    };
   }
 
   static getTokenCreationFee(): number {

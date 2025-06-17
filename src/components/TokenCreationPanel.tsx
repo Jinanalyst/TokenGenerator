@@ -20,7 +20,10 @@ import {
   Droplets,
   Edit3,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  TestTube,
+  Eye,
+  AlertCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useSolana } from '../hooks/useSolana';
@@ -58,11 +61,13 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
   onTokenDataChange 
 }) => {
   const [isCreating, setIsCreating] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
   const [isCreated, setIsCreated] = useState(false);
   const [tokenResult, setTokenResult] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({});
+  const [testResult, setTestResult] = useState<any>(null);
   
   // Local editable state
   const [editableData, setEditableData] = useState({
@@ -165,6 +170,58 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
       handleInputChange('image', imageUrl);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleTestTransaction = async () => {
+    if (!wallet || !wallet.publicKey) {
+      toast({
+        title: "Wallet Required",
+        description: "Please connect your wallet to test the transaction",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsTesting(true);
+    setTestResult(null);
+    
+    try {
+      const metadata = {
+        name: editableData.name,
+        symbol: editableData.symbol,
+        decimals: editableData.decimals,
+        supply: editableData.supply,
+        image: editableData.image,
+        revokeMintAuthority: editableData.revokeMintAuthority,
+        revokeFreezeAuthority: editableData.revokeFreezeAuthority,
+        revokeUpdateAuthority: editableData.revokeUpdateAuthority
+      };
+
+      const result = await solana.service.testTransactionReadiness(wallet, metadata);
+      setTestResult(result);
+      
+      if (result.success) {
+        toast({
+          title: "Transaction Test Passed! ✅",
+          description: "All checks passed. Ready to create token.",
+        });
+      } else {
+        toast({
+          title: "Transaction Test Failed",
+          description: `Found ${result.errors?.length || 0} issues that need to be resolved`,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Transaction test failed:', error);
+      toast({
+        title: "Test Failed",
+        description: "Unable to test transaction readiness",
+        variant: "destructive"
+      });
+    } finally {
+      setIsTesting(false);
+    }
   };
 
   const handleCreateToken = async () => {
@@ -542,6 +599,45 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           </div>
         )}
 
+        {/* Transaction Test Results */}
+        {testResult && (
+          <div className={`rounded-lg p-4 border ${testResult.success 
+            ? 'bg-green-500/10 border-green-500/30' 
+            : 'bg-red-500/10 border-red-500/30'
+          }`}>
+            <div className="flex items-center space-x-2 mb-3">
+              {testResult.success ? (
+                <CheckCircle className="w-5 h-5 text-green-400" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-red-400" />
+              )}
+              <span className={`font-semibold ${testResult.success ? 'text-green-300' : 'text-red-300'}`}>
+                Transaction Test {testResult.success ? 'Passed' : 'Failed'}
+              </span>
+            </div>
+            
+            {testResult.errors && testResult.errors.length > 0 && (
+              <div className="space-y-1">
+                {testResult.errors.map((error: string, index: number) => (
+                  <p key={index} className="text-red-200 text-sm">• {error}</p>
+                ))}
+              </div>
+            )}
+            
+            {testResult.success && (
+              <div className="space-y-1 text-sm">
+                <p className="text-green-200">✅ Wallet connected and ready</p>
+                <p className="text-green-200">✅ Sufficient balance available</p>
+                <p className="text-green-200">✅ Network connection stable</p>
+                <p className="text-green-200">✅ All inputs validated</p>
+                {testResult.estimatedFee && (
+                  <p className="text-green-200">💰 Estimated fees: ~{testResult.estimatedFee.toFixed(6)} SOL</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Token Result (if created) with secure external links */}
         {isCreated && tokenResult && (
           <div className="space-y-4">
@@ -594,12 +690,31 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           </div>
         )}
 
-        {/* Action Button */}
+        {/* Action Buttons */}
         {!isCreated && (
-          <div className="flex justify-center">
+          <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 justify-center">
+            <Button
+              onClick={handleTestTransaction}
+              disabled={isTesting || !wallet}
+              variant="outline"
+              className="text-white border-white/20 hover:bg-white/10"
+            >
+              {isTesting ? (
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <span>Testing...</span>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-2">
+                  <TestTube className="w-4 h-4" />
+                  <span>Test Transaction</span>
+                </div>
+              )}
+            </Button>
+
             <Button
               onClick={handleCreateToken}
-              disabled={isCreating || !wallet}
+              disabled={isCreating || !wallet || (testResult && !testResult.success)}
               className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white px-8 py-3 text-lg font-semibold"
             >
               {isCreating ? (
