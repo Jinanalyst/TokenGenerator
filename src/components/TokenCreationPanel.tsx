@@ -27,7 +27,7 @@ import {
   Bot
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useSolana } from '../hooks/useSolana';
+import { useEnhancedSolana } from '../hooks/useEnhancedSolana';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   validateTokenName, 
@@ -86,7 +86,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
   
   const { toast } = useToast();
   const navigate = useNavigate();
-  const solana = useSolana(editableData.network as 'mainnet' | 'devnet');
+  const solana = useEnhancedSolana(editableData.network as 'mainnet' | 'devnet');
 
   // Update local state when tokenData changes
   useEffect(() => {
