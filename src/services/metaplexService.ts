@@ -1,3 +1,4 @@
+
 import { 
   Connection, 
   PublicKey, 
@@ -8,10 +9,12 @@ import {
 import {
   createCreateMetadataAccountV3Instruction,
   CreateMetadataAccountV3InstructionAccounts,
-  DataV2,
-  TOKEN_METADATA_PROGRAM_ID
+  DataV2
 } from '@metaplex-foundation/mpl-token-metadata';
 import { IPFSService } from './ipfsService';
+
+// Correct Metaplex Token Metadata Program ID
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
 
 export interface MetaplexTokenMetadata {
   name: string;
