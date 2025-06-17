@@ -46,17 +46,17 @@ export class EnhancedSolanaService {
   private static readonly MAX_RETRIES = 3;
   private static readonly CONFIRMATION_TIMEOUT = 60000;
 
-  // Enhanced RPC endpoints with proper fallbacks
+  // Enhanced RPC endpoints with working mainnet RPCs
   private static readonly MAINNET_RPCS: RPCEndpoint[] = [
-    { url: 'https://api.mainnet-beta.solana.com', name: 'Official Mainnet', priority: 1 },
-    { url: 'https://solana-api.projectserum.com', name: 'Serum', priority: 2 },
+    { url: 'https://mainnet.helius-rpc.com/?api-key=02b6df6c-8f47-4ce3-8d4b-3b1cc7b89e94', name: 'Helius RPC', priority: 1 },
+    { url: 'https://api.mainnet-beta.solana.com', name: 'Official Mainnet', priority: 2 },
     { url: 'https://rpc.ankr.com/solana', name: 'Ankr', priority: 3 },
-    { url: 'https://solana-mainnet.g.alchemy.com/v2/demo', name: 'Alchemy', priority: 4 }
+    { url: 'https://solana-mainnet.g.alchemy.com/v2/demo', name: 'Alchemy Demo', priority: 4 }
   ];
 
   private static readonly DEVNET_RPCS: RPCEndpoint[] = [
     { url: 'https://api.devnet.solana.com', name: 'Official Devnet', priority: 1 },
-    { url: 'https://devnet.genesysgo.net', name: 'GenesysGo Devnet', priority: 2 }
+    { url: 'https://devnet.helius-rpc.com/?api-key=02b6df6c-8f47-4ce3-8d4b-3b1cc7b89e94', name: 'Helius Devnet', priority: 2 }
   ];
 
   constructor(network: 'mainnet' | 'devnet') {
@@ -73,10 +73,18 @@ export class EnhancedSolanaService {
       rpc.url, 
       {
         commitment: 'confirmed' as Commitment,
-        confirmTransactionInitialTimeout: this.network === 'mainnet' ? 60000 : 30000,
-        wsEndpoint: undefined, // Disable websocket to avoid connection issues
+        confirmTransactionInitialTimeout: this.network === 'mainnet' ? 120000 : 30000,
+        wsEndpoint: undefined,
         httpHeaders: {
           'Content-Type': 'application/json',
+          'User-Agent': 'Solana-Token-Creator/1.0'
+        },
+        fetch: (url, options) => {
+          console.log(`Making request to: ${url}`);
+          return fetch(url, {
+            ...options,
+            timeout: 15000 // 15 second timeout
+          });
         }
       }
     ));
@@ -109,15 +117,18 @@ export class EnhancedSolanaService {
         
         console.log(`Testing ${endpointName}...`);
         
-        // Test with a simple getVersion call with timeout
-        const versionPromise = connection.getVersion();
+        // Test with getEpochInfo instead of getVersion for better reliability
+        const epochPromise = connection.getEpochInfo();
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Connection timeout')), 8000)
+          setTimeout(() => reject(new Error('Connection timeout after 10 seconds')), 10000)
         );
         
-        const version = await Promise.race([versionPromise, timeoutPromise]) as any;
+        const epochInfo = await Promise.race([epochPromise, timeoutPromise]) as any;
         
-        console.log(`✅ Connected to ${this.network} via ${endpointName}:`, version['solana-core']);
+        // Additional test - try to get latest blockhash
+        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        
+        console.log(`✅ Connected to ${this.network} via ${endpointName} (Epoch: ${epochInfo.epoch})`);
         this.currentConnectionIndex = i;
         return true;
         
@@ -177,12 +188,14 @@ export class EnhancedSolanaService {
     try {
       console.log(`Testing transaction readiness on ${this.network}...`);
       
-      // Enhanced connection test
+      // Enhanced connection test with specific error handling
       const connectionStatus = await this.checkConnection();
       if (!connectionStatus) {
-        errors.push(`All ${this.network} RPC endpoints are unavailable - network connection issues detected`);
+        errors.push(`Cannot connect to ${this.network} - all RPC endpoints are failing. This could be due to network congestion or RPC issues.`);
         return { success: false, errors, connectionStatus };
       }
+
+      console.log(`✅ Successfully connected to ${this.network} via ${this.getCurrentEndpointName()}`);
 
       // Validate fee recipient
       if (!this.validateFeeRecipient()) {
@@ -191,17 +204,18 @@ export class EnhancedSolanaService {
 
       // Enhanced wallet validation
       if (!wallet || !wallet.publicKey || !wallet.adapter) {
-        errors.push('Wallet not properly connected - please reconnect your wallet');
+        errors.push('Wallet not properly connected - please disconnect and reconnect your wallet');
         return { success: false, errors, connectionStatus };
       }
 
       // Verify wallet adapter is functional
       try {
-        if (!wallet.adapter.connected) {
-          errors.push('Wallet adapter not connected - please refresh and reconnect');
+        if (!wallet.adapter.connected || !wallet.adapter.publicKey) {
+          errors.push('Wallet adapter not properly connected - please refresh page and reconnect');
         }
       } catch (error) {
-        errors.push('Wallet adapter verification failed - try reconnecting your wallet');
+        console.error('Wallet adapter check failed:', error);
+        errors.push('Wallet adapter verification failed - try refreshing and reconnecting your wallet');
       }
 
       const walletPublicKey = typeof wallet.publicKey === 'string' 
@@ -209,9 +223,12 @@ export class EnhancedSolanaService {
         : wallet.publicKey;
 
       // Enhanced balance check with network-specific requirements
+      console.log('Checking wallet balance...');
       const balance = await this.getBalance(walletPublicKey);
       const requiredBalance = this.getMinimumBalance() / LAMPORTS_PER_SOL;
       const balanceCheck = balance >= requiredBalance;
+      
+      console.log(`Wallet balance: ${balance} SOL, Required: ${requiredBalance} SOL`);
       
       if (!balanceCheck) {
         const networkName = this.network === 'mainnet' ? 'Mainnet' : 'Devnet';
@@ -222,15 +239,16 @@ export class EnhancedSolanaService {
         }
       }
 
-      // Enhanced fee estimation
+      // Enhanced fee estimation with better error handling
       try {
         const connection = this.getCurrentConnection();
+        console.log('Getting latest blockhash for fee estimation...');
         const { blockhash } = await connection.getLatestBlockhash('confirmed');
         const testTransaction = new Transaction();
         testTransaction.recentBlockhash = blockhash;
         testTransaction.feePayer = walletPublicKey;
         
-        // Add a typical instruction to estimate real fees
+        // Add typical instructions to estimate real fees
         testTransaction.add(
           SystemProgram.transfer({
             fromPubkey: walletPublicKey,
@@ -239,12 +257,14 @@ export class EnhancedSolanaService {
           })
         );
         
+        console.log('Estimating transaction fees...');
         const feeEstimate = await connection.getFeeForMessage(testTransaction.compileMessage());
-        const networkMultiplier = this.network === 'mainnet' ? 2 : 1; // Higher fees expected on mainnet
-        estimatedFee = ((feeEstimate?.value || 5000) * networkMultiplier) / LAMPORTS_PER_SOL;
+        const networkMultiplier = this.network === 'mainnet' ? 3 : 1; // Higher fees expected on mainnet
+        estimatedFee = ((feeEstimate?.value || 10000) * networkMultiplier) / LAMPORTS_PER_SOL;
+        console.log(`Estimated fees: ${estimatedFee} SOL`);
       } catch (error) {
         console.warn('Fee estimation failed:', error);
-        errors.push(`Failed to estimate transaction fees on ${this.network} - network may be congested`);
+        errors.push(`Failed to estimate transaction fees on ${this.network} - this could indicate network congestion`);
       }
 
       // Validate metadata inputs
@@ -301,18 +321,23 @@ export class EnhancedSolanaService {
   private createNetworkSpecificError(error: any): string {
     const message = error?.message?.toLowerCase() || '';
     
+    console.log('Creating network-specific error for:', message);
+    
     if (this.network === 'mainnet') {
       if (message.includes('insufficient funds') || message.includes('balance')) {
         return 'Insufficient SOL balance for mainnet transaction (need at least 0.05 SOL)';
       }
-      if (message.includes('timeout') || message.includes('connection')) {
-        return 'Mainnet network congestion detected - please try again in a few minutes';
+      if (message.includes('timeout') || message.includes('connection') || message.includes('fetch')) {
+        return 'Mainnet network connection issues detected - RPC endpoints may be down or congested';
       }
       if (message.includes('blockhash')) {
         return 'Mainnet blockhash expired - transaction took too long, please retry';
       }
       if (message.includes('429') || message.includes('rate limit')) {
         return 'Mainnet RPC rate limit reached - please wait and try again';
+      }
+      if (message.includes('network') || message.includes('rpc')) {
+        return 'Network connectivity issues detected - please check your internet connection and try again';
       }
     }
     

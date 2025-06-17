@@ -192,7 +192,13 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     setTestResult(null);
     
     try {
-      console.log(`Testing transaction on ${editableData.network}...`);
+      console.log(`Starting transaction test on ${editableData.network}...`);
+      
+      // Show initial connection status
+      toast({
+        title: "Testing Connection",
+        description: `Connecting to ${editableData.network} network...`,
+      });
       
       const metadata = {
         name: editableData.name,
@@ -211,23 +217,38 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
       if (result.success) {
         toast({
           title: "Transaction Test Passed! ✅",
-          description: `All checks passed. Ready to create token on ${editableData.network}.`,
+          description: `All checks passed. Ready to create token on ${editableData.network} via ${result.currentRPC}.`,
         });
       } else {
+        const errorMessage = result.errors?.join(', ') || 'Unknown error';
+        console.error('Transaction test failed with errors:', result.errors);
+        
         toast({
           title: "Transaction Test Failed",
-          description: `Found ${result.errors?.length || 0} issues that need to be resolved`,
+          description: `Network issues detected: ${errorMessage}`,
           variant: "destructive"
         });
       }
     } catch (error) {
       console.error('Transaction test failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unable to test transaction readiness';
-      toast({
-        title: "Test Failed",
-        description: errorMessage,
-        variant: "destructive"
-      });
+      
+      // Check if it's a network-specific error
+      if (errorMessage.toLowerCase().includes('network') || 
+          errorMessage.toLowerCase().includes('connection') || 
+          errorMessage.toLowerCase().includes('rpc')) {
+        toast({
+          title: "Network Connection Error",
+          description: `Failed to connect to ${editableData.network} network. Please check your internet connection and try again.`,
+          variant: "destructive"
+        });
+      } else {
+        toast({
+          title: "Test Failed",
+          description: errorMessage,
+          variant: "destructive"
+        });
+      }
     } finally {
       setIsTesting(false);
     }
@@ -268,7 +289,13 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     setIsCreating(true);
     
     try {
-      console.log(`Creating token on ${editableData.network} with validated data:`, editableData);
+      console.log(`Starting token creation on ${editableData.network} with validated data:`, editableData);
+
+      // Show progress toast
+      toast({
+        title: "Creating Token",
+        description: `Connecting to ${editableData.network} and preparing transaction...`,
+      });
 
       const metadata = {
         name: editableData.name,
@@ -310,9 +337,18 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     } catch (error) {
       console.error(`Token creation failed on ${editableData.network}:`, error);
       const errorMessage = error instanceof Error ? error.message : `Token creation failed on ${editableData.network}`;
+      
+      // Check for network-specific errors and provide better guidance
+      let userMessage = errorMessage;
+      if (errorMessage.toLowerCase().includes('network') || 
+          errorMessage.toLowerCase().includes('connection') || 
+          errorMessage.toLowerCase().includes('rpc')) {
+        userMessage = `Network connection error on ${editableData.network}. Please check your internet connection and try again. If the problem persists, the network may be experiencing congestion.`;
+      }
+      
       toast({
         title: "Creation Failed",
-        description: errorMessage,
+        description: userMessage,
         variant: "destructive"
       });
     } finally {
