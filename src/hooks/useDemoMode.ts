@@ -73,6 +73,7 @@ export const generateMockMarketData = () => ({
 });
 
 export const generateMockTradingStats = () => ({
+  botId: 'demo-bot-1',
   totalVolume: 28500,
   totalTrades: 142,
   averagePrice: 0.004185,
