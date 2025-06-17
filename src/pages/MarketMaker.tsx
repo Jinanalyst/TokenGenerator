@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
@@ -42,10 +41,10 @@ const MarketMaker = () => {
   const { isDemoMode, setIsDemoMode } = useDemoMode();
   
   // Token data from URL params or demo data
-  const tokenMintAddress = searchParams.get('mint') || '11111111111111111111111111111112';
-  const tokenSymbol = searchParams.get('symbol') || 'DEMO';
-  const tokenName = searchParams.get('name') || 'Demo Token';
-  const network = searchParams.get('network') || 'mainnet';
+  const tokenMintAddress = isDemoMode ? '11111111111111111111111111111112' : (searchParams.get('mint') || '11111111111111111111111111111112');
+  const tokenSymbol = isDemoMode ? 'DEMO' : (searchParams.get('symbol') || 'TOKEN');
+  const tokenName = isDemoMode ? 'Demo Token' : (searchParams.get('name') || 'Token');
+  const network = isDemoMode ? 'mainnet' : (searchParams.get('network') || 'mainnet');
   
   // Bot configuration state
   const [botConfig, setBotConfig] = useState({
