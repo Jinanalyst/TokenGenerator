@@ -1,4 +1,3 @@
-
 import { 
   Connection, 
   PublicKey, 
@@ -60,20 +59,6 @@ export class MetaplexService {
   ): Promise<Transaction> {
     const metadataAddress = MetaplexService.getMetadataAddress(mintPublicKey);
 
-    const createMetadataArgs: CreateMetadataAccountV3InstructionArgs = {
-      data: {
-        name: metadata.name,
-        symbol: metadata.symbol,
-        uri: metadata.uri,
-        sellerFeeBasisPoints: metadata.sellerFeeBasisPoints,
-        creators: metadata.creators || null,
-        collection: metadata.collection || null,
-        uses: metadata.uses || null,
-      },
-      isMutable: true,
-      collectionDetails: null,
-    };
-
     const createMetadataInstruction = createMetadataAccountV3(
       {
         metadata: metadataAddress,
@@ -84,7 +69,19 @@ export class MetaplexService {
         systemProgram: SystemProgram.programId,
         rent: SYSVAR_RENT_PUBKEY,
       },
-      createMetadataArgs
+      {
+        data: {
+          name: metadata.name,
+          symbol: metadata.symbol,
+          uri: metadata.uri,
+          sellerFeeBasisPoints: metadata.sellerFeeBasisPoints,
+          creators: metadata.creators || null,
+          collection: metadata.collection || null,
+          uses: metadata.uses || null,
+        },
+        isMutable: true,
+        collectionDetails: null,
+      }
     );
 
     const transaction = new Transaction().add(createMetadataInstruction);
