@@ -28,6 +28,7 @@ const ChatInterface = () => {
   const [isTyping, setIsTyping] = useState(false);
   const [currentTokenData, setCurrentTokenData] = useState(null);
   const [wallet, setWallet] = useState(null);
+  const [showPanels, setShowPanels] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -41,6 +42,16 @@ const ChatInterface = () => {
 
   const handleTokenDataChange = (newTokenData: any) => {
     setCurrentTokenData(newTokenData);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+    
+    // Show panels when user starts typing
+    if (value.trim() && !showPanels) {
+      setShowPanels(true);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -202,7 +213,7 @@ const ChatInterface = () => {
 
   return (
     <div className="container mx-auto px-4 max-w-4xl">
-      {/* Wallet Connection */}
+      {/* Wallet Connection - Always show */}
       <div className="mb-4">
         <WalletConnection onWalletChange={setWallet} />
       </div>
@@ -282,7 +293,7 @@ const ChatInterface = () => {
           <div className="flex space-x-3">
             <Input
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              onChange={handleInputChange}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
               placeholder="Try: 'Create MyToken with 5 million supply' or 'Change supply to 10 million'"
               className="flex-1 bg-white/10 border-white/20 text-white placeholder-white/60 focus:border-purple-400"
@@ -298,8 +309,8 @@ const ChatInterface = () => {
         </div>
       </Card>
 
-      {/* Token Creation Panel */}
-      {currentTokenData && (
+      {/* Token Creation Panel - Show when user starts typing */}
+      {showPanels && (
         <div className="mt-6">
           <TokenCreationPanel 
             tokenData={currentTokenData} 
