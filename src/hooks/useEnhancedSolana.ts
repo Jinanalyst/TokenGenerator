@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { EnhancedSolanaService } from '../services/enhancedSolanaService';
 import { TokenMetadata } from '../services/solanaService';
@@ -23,16 +22,23 @@ export const useEnhancedSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
     setError(null);
     
     try {
+      console.log(`Attempting to connect to ${network}...`);
       const connected = await solanaService.checkConnection();
       setIsConnected(connected);
       
       if (!connected) {
-        setError(`Failed to connect to ${network} - all RPC endpoints unavailable`);
+        const errorMsg = `Failed to connect to ${network} - all RPC endpoints unavailable. This may be due to network congestion or temporary RPC issues.`;
+        setError(errorMsg);
+        console.error(errorMsg);
+      } else {
+        console.log(`Successfully connected to ${network}`);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Connection failed';
-      setError(`${network} connection failed: ${errorMessage}`);
+      const fullError = `${network} connection failed: ${errorMessage}`;
+      setError(fullError);
       setIsConnected(false);
+      console.error(fullError);
     } finally {
       setIsLoading(false);
     }
@@ -108,4 +114,3 @@ export const useEnhancedSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
     getTokenCreationFee: () => EnhancedSolanaService.getTokenCreationFee()
   };
 };
-

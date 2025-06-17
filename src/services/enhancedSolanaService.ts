@@ -35,6 +35,15 @@ interface RPCEndpoint {
   priority: number;
 }
 
+export interface TransactionTest {
+  success: boolean;
+  errors?: string[];
+  estimatedFee?: number;
+  balanceCheck?: boolean;
+  connectionStatus?: boolean;
+  currentRPC?: string;
+}
+
 export class EnhancedSolanaService {
   private connections: Connection[] = [];
   private rpcEndpoints: RPCEndpoint[] = [];
@@ -46,12 +55,13 @@ export class EnhancedSolanaService {
   private static readonly MAX_RETRIES = 3;
   private static readonly CONFIRMATION_TIMEOUT = 60000;
 
-  // Enhanced RPC endpoints with working mainnet RPCs
+  // Enhanced RPC endpoints with working mainnet RPCs - using more reliable endpoints
   private static readonly MAINNET_RPCS: RPCEndpoint[] = [
-    { url: 'https://mainnet.helius-rpc.com/?api-key=02b6df6c-8f47-4ce3-8d4b-3b1cc7b89e94', name: 'Helius RPC', priority: 1 },
-    { url: 'https://api.mainnet-beta.solana.com', name: 'Official Mainnet', priority: 2 },
-    { url: 'https://rpc.ankr.com/solana', name: 'Ankr', priority: 3 },
-    { url: 'https://solana-mainnet.g.alchemy.com/v2/demo', name: 'Alchemy Demo', priority: 4 }
+    { url: 'https://api.mainnet-beta.solana.com', name: 'Official Mainnet', priority: 1 },
+    { url: 'https://rpc.ankr.com/solana', name: 'Ankr', priority: 2 },
+    { url: 'https://mainnet.helius-rpc.com/?api-key=02b6df6c-8f47-4ce3-8d4b-3b1cc7b89e94', name: 'Helius RPC', priority: 3 },
+    { url: 'https://solana-api.projectserum.com', name: 'Project Serum', priority: 4 },
+    { url: 'https://solana-mainnet.rpc.extrnode.com', name: 'Extrnode', priority: 5 }
   ];
 
   private static readonly DEVNET_RPCS: RPCEndpoint[] = [
@@ -73,18 +83,11 @@ export class EnhancedSolanaService {
       rpc.url, 
       {
         commitment: 'confirmed' as Commitment,
-        confirmTransactionInitialTimeout: this.network === 'mainnet' ? 120000 : 30000,
+        confirmTransactionInitialTimeout: 30000, // Reduced timeout for faster failover
         wsEndpoint: undefined,
         httpHeaders: {
           'Content-Type': 'application/json',
           'User-Agent': 'Solana-Token-Creator/1.0'
-        },
-        fetch: (url, options) => {
-          console.log(`Making request to: ${url}`);
-          return fetch(url, {
-            ...options,
-            timeout: 15000 // 15 second timeout
-          });
         }
       }
     ));
@@ -117,18 +120,18 @@ export class EnhancedSolanaService {
         
         console.log(`Testing ${endpointName}...`);
         
-        // Test with getEpochInfo instead of getVersion for better reliability
-        const epochPromise = connection.getEpochInfo();
+        // Simple version check with shorter timeout
+        const versionPromise = connection.getVersion();
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Connection timeout after 10 seconds')), 10000)
+          setTimeout(() => reject(new Error('Connection timeout')), 5000)
         );
         
-        const epochInfo = await Promise.race([epochPromise, timeoutPromise]) as any;
+        await Promise.race([versionPromise, timeoutPromise]);
         
-        // Additional test - try to get latest blockhash
-        const { blockhash } = await connection.getLatestBlockhash('confirmed');
+        // Quick blockhash test
+        await connection.getLatestBlockhash('confirmed');
         
-        console.log(`✅ Connected to ${this.network} via ${endpointName} (Epoch: ${epochInfo.epoch})`);
+        console.log(`✅ Connected to ${this.network} via ${endpointName}`);
         this.currentConnectionIndex = i;
         return true;
         
@@ -192,7 +195,12 @@ export class EnhancedSolanaService {
       const connectionStatus = await this.checkConnection();
       if (!connectionStatus) {
         errors.push(`Cannot connect to ${this.network} - all RPC endpoints are failing. This could be due to network congestion or RPC issues.`);
-        return { success: false, errors, connectionStatus };
+        return { 
+          success: false, 
+          errors, 
+          connectionStatus,
+          currentRPC: this.getCurrentEndpointName()
+        };
       }
 
       console.log(`✅ Successfully connected to ${this.network} via ${this.getCurrentEndpointName()}`);
@@ -205,7 +213,12 @@ export class EnhancedSolanaService {
       // Enhanced wallet validation
       if (!wallet || !wallet.publicKey || !wallet.adapter) {
         errors.push('Wallet not properly connected - please disconnect and reconnect your wallet');
-        return { success: false, errors, connectionStatus };
+        return { 
+          success: false, 
+          errors, 
+          connectionStatus,
+          currentRPC: this.getCurrentEndpointName()
+        };
       }
 
       // Verify wallet adapter is functional
@@ -314,7 +327,12 @@ export class EnhancedSolanaService {
       console.error('Enhanced transaction test failed:', error);
       const friendlyError = this.createNetworkSpecificError(error);
       errors.push(friendlyError);
-      return { success: false, errors, connectionStatus: false };
+      return { 
+        success: false, 
+        errors, 
+        connectionStatus: false,
+        currentRPC: this.getCurrentEndpointName()
+      };
     }
   }
 
