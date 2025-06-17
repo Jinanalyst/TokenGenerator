@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
@@ -57,7 +58,7 @@ const MarketMaker = () => {
   });
   
   const [isCreating, setIsCreating] = useState(false);
-  const [isMainnet, setIsMainnet] = useState(true);
+  const [isMainnet, setIsMainnet] = useState(network === 'mainnet');
   const [wallet, setWallet] = useState<any>(isDemoMode ? { connected: true } : null);
   const [showDashboard, setShowDashboard] = useState(false);
   
@@ -72,7 +73,9 @@ const MarketMaker = () => {
     }
 
     // Check if we have required token data
-    if (!tokenMintAddress || !tokenSymbol || !tokenName) {
+    if (!tokenMintAddress || tokenMintAddress === '11111111111111111111111111111112' || 
+        !tokenSymbol || tokenSymbol === 'TOKEN' || 
+        !tokenName || tokenName === 'Token') {
       toast({
         title: "Missing Token Data",
         description: "Please create a token first to access market maker features",
