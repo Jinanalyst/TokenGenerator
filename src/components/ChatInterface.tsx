@@ -20,7 +20,7 @@ const ChatInterface = () => {
     {
       id: '1',
       type: 'ai',
-      content: "Hey there! 👋 I'm your Solana Token Generator AI assistant. I can help you create real tokens on both Solana mainnet and devnet with advanced features like authority controls. Connect your wallet and let's create something amazing!\n\nYou can tell me:\n• Token name and symbol\n• Supply amount (e.g., '1 million tokens')\n• Authority settings\n• Network preference",
+      content: "Hey there! 👋 I'm your Solana Token Generator AI assistant. I can help you create real tokens on both Solana mainnet and devnet with advanced features like authority controls. Connect your wallet and let's create something amazing!\n\nYou can tell me:\n• Token name and symbol\n• Supply amount (e.g., '1 million tokens')\n• Authority settings\n• Network preference (mainnet/devnet)",
       timestamp: new Date(),
     }
   ]);
@@ -81,6 +81,13 @@ const ChatInterface = () => {
     return supplyMatch ? parseInt(supplyMatch[1].replace(/,/g, '')) : null;
   };
 
+  const extractNetwork = (text: string) => {
+    const input = text.toLowerCase();
+    if (input.includes('mainnet')) return 'mainnet';
+    if (input.includes('devnet')) return 'devnet';
+    return null;
+  };
+
   const generateAIResponse = (userInput: string) => {
     const input = userInput.toLowerCase();
 
@@ -92,17 +99,18 @@ const ChatInterface = () => {
     const extractedName = extractTokenName(userInput);
     const extractedSymbol = extractTokenSymbol(userInput);
     const extractedSupply = extractTokenSupply(userInput);
+    const extractedNetwork = extractNetwork(userInput);
 
     // Create updated token data if we extracted any details
     let updatedTokenData = null;
-    if (extractedName || extractedSymbol || extractedSupply) {
+    if (extractedName || extractedSymbol || extractedSupply || extractedNetwork) {
       updatedTokenData = {
         ...currentTokenData,
         name: extractedName || currentTokenData.name,
         symbol: extractedSymbol || currentTokenData.symbol,
         supply: extractedSupply || currentTokenData.supply,
+        network: extractedNetwork || currentTokenData.network,
         decimals: 9,
-        network: currentTokenData.network,
         revokeMintAuthority: currentTokenData.revokeMintAuthority,
         revokeFreezeAuthority: currentTokenData.revokeFreezeAuthority,
         revokeUpdateAuthority: currentTokenData.revokeUpdateAuthority,
@@ -128,7 +136,7 @@ const ChatInterface = () => {
         };
 
         return {
-          content: `Perfect! I've updated your token details:\n\n🪙 **Current Token Details:**\n• Name: ${finalTokenData.name}\n• Symbol: ${finalTokenData.symbol}\n• Supply: ${finalTokenData.supply.toLocaleString()}\n• Network: ${finalTokenData.network}\n\nYou can also set authority controls using the checkboxes below, or just say "create it" to deploy!`,
+          content: `Perfect! I've updated your token details:\n\n🪙 **Current Token Details:**\n• Name: ${finalTokenData.name}\n• Symbol: ${finalTokenData.symbol}\n• Supply: ${finalTokenData.supply.toLocaleString()}\n• Network: ${finalTokenData.network.toUpperCase()}\n\nYou can also set authority controls using the checkboxes below, or just say "create it" to deploy!`,
           tokenData: finalTokenData,
           showPanel: true
         };
@@ -136,16 +144,17 @@ const ChatInterface = () => {
     }
 
     // Check if user is providing comprehensive token details
-    if (extractedName || extractedSymbol || (input.includes('create') && (extractedName || extractedSymbol))) {
+    if (extractedName || extractedSymbol || extractedNetwork || (input.includes('create') && (extractedName || extractedSymbol))) {
       const tokenData = updatedTokenData || {
         ...currentTokenData,
         name: extractedName || currentTokenData.name,
         symbol: extractedSymbol || currentTokenData.symbol,
-        supply: extractedSupply || currentTokenData.supply
+        supply: extractedSupply || currentTokenData.supply,
+        network: extractedNetwork || currentTokenData.network
       };
 
       return {
-        content: `Great! I've got the details for your token:\n\n🪙 **Name**: ${tokenData.name}\n🏷️ **Symbol**: ${tokenData.symbol}\n📊 **Supply**: ${tokenData.supply.toLocaleString()}\n🌐 **Network**: ${tokenData.network}\n\nLooks good? You can adjust the authority settings below or say "create it" to deploy!`,
+        content: `Great! I've got the details for your token:\n\n🪙 **Name**: ${tokenData.name}\n🏷️ **Symbol**: ${tokenData.symbol}\n📊 **Supply**: ${tokenData.supply.toLocaleString()}\n🌐 **Network**: ${tokenData.network.toUpperCase()}\n\nLooks good? You can adjust the authority settings below or say "create it" to deploy!`,
         tokenData,
         showPanel: true
       };
@@ -182,7 +191,7 @@ const ChatInterface = () => {
         network
       };
       return {
-        content: `Perfect! I'll set this up for Solana ${network}. ${network === 'mainnet' ? '⚠️ Remember mainnet uses real SOL!' : '✅ Devnet is perfect for testing!'}\n\nNow, what else would you like to configure for your token?`,
+        content: `Perfect! I'll set this up for Solana ${network.toUpperCase()}. ${network === 'mainnet' ? '⚠️ Remember mainnet uses real SOL!' : '✅ Devnet is perfect for testing!'}\n\nNow, what else would you like to configure for your token?`,
         tokenData: networkTokenData,
         showPanel: true
       };
@@ -198,10 +207,10 @@ const ChatInterface = () => {
 
     // Default responses
     const responses = [
-      "I'm here to help you create real Solana tokens! Try saying something like 'Create a token called MyToken with symbol MT and 5 million supply'",
-      "Ready to build on Solana? Tell me your token name, symbol, and how many tokens you want to create!",
-      "Let's create your token with proper authority controls! What's your token idea?",
-      "I can help with token creation, supply amounts, authority settings, and Raydium liquidity. What would you like to know?"
+      "I'm here to help you create real Solana tokens! Try saying something like 'Create a token called MyToken with symbol MT and 5 million supply on mainnet'",
+      "Ready to build on Solana? Tell me your token name, symbol, how many tokens, and whether you want mainnet or devnet!",
+      "Let's create your token with proper authority controls! What's your token idea? Don't forget to specify mainnet or devnet!",
+      "I can help with token creation, supply amounts, authority settings, and network selection. What would you like to know?"
     ];
 
     return {
@@ -289,7 +298,7 @@ const ChatInterface = () => {
                         <div>Name: {message.tokenData.name || 'N/A'}</div>
                         <div>Symbol: {message.tokenData.symbol || 'N/A'}</div>
                         <div>Supply: {message.tokenData.supply?.toLocaleString() || 'N/A'}</div>
-                        <div>Network: {message.tokenData.network || 'devnet'}</div>
+                        <div>Network: {message.tokenData.network?.toUpperCase() || 'DEVNET'}</div>
                       </div>
                     </div>
                   )}
@@ -331,7 +340,7 @@ const ChatInterface = () => {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Try: 'Create MyToken with 5 million supply' or 'Change supply to 10 million'"
+              placeholder="Try: 'Create MyToken with 5 million supply on mainnet' or 'Change to devnet'"
               className="flex-1 bg-white/10 border-white/20 text-white placeholder-white/60 focus:border-purple-400"
             />
             <Button

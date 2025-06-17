@@ -55,12 +55,12 @@ export class EnhancedSolanaService {
   private static readonly MAX_RETRIES = 3;
   private static readonly CONFIRMATION_TIMEOUT = 60000;
 
-  // Updated with more reliable mainnet RPCs
+  // Updated with your working Alchemy endpoint first
   private static readonly MAINNET_RPCS: RPCEndpoint[] = [
-    { url: 'https://solana-api.projectserum.com', name: 'Project Serum', priority: 1 },
+    { url: 'https://solana-mainnet.g.alchemy.com/v2/IrmhofdwFpA4ABFafBa4g', name: 'Alchemy Custom', priority: 1 },
     { url: 'https://api.mainnet-beta.solana.com', name: 'Official Mainnet', priority: 2 },
-    { url: 'https://rpc.ankr.com/solana', name: 'Ankr', priority: 3 },
-    { url: 'https://solana-mainnet.g.alchemy.com/v2/demo', name: 'Alchemy Demo', priority: 4 },
+    { url: 'https://solana-api.projectserum.com', name: 'Project Serum', priority: 3 },
+    { url: 'https://rpc.ankr.com/solana', name: 'Ankr', priority: 4 },
     { url: 'https://mainnet.helius-rpc.com/?api-key=02b6df6c-8f47-4ce3-8d4b-3b1cc7b89e94', name: 'Helius RPC', priority: 5 }
   ];
 
@@ -111,9 +111,9 @@ export class EnhancedSolanaService {
   }
 
   async checkConnection(): Promise<boolean> {
-    console.log(`Testing ${this.network} connections with improved reliability...`);
+    console.log(`Testing ${this.network} connections with your custom Alchemy endpoint...`);
     
-    // Reset to first endpoint
+    // Reset to first endpoint (your Alchemy endpoint)
     this.currentConnectionIndex = 0;
     
     for (let i = 0; i < this.connections.length; i++) {
@@ -123,18 +123,18 @@ export class EnhancedSolanaService {
         
         console.log(`Testing ${endpointName} (${this.rpcEndpoints[i]?.url})...`);
         
-        // Multiple quick tests to verify connection
+        // Quick connection test with shorter timeout for faster switching
         const tests = await Promise.allSettled([
           // Test 1: Get slot info
           Promise.race([
             connection.getSlot('confirmed'),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Slot timeout')), 5000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Slot timeout')), 3000))
           ]),
           
           // Test 2: Get latest blockhash
           Promise.race([
             connection.getLatestBlockhash('confirmed'),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Blockhash timeout')), 5000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Blockhash timeout')), 3000))
           ])
         ]);
 
@@ -203,7 +203,7 @@ export class EnhancedSolanaService {
     let estimatedFee = 0;
 
     try {
-      console.log(`Testing transaction readiness on ${this.network} with enhanced connection testing...`);
+      console.log(`Testing transaction readiness on ${this.network} with custom Alchemy endpoint...`);
       
       // Enhanced connection test with better error reporting
       const connectionStatus = await this.checkConnection();
