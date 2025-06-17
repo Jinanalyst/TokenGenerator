@@ -76,3 +76,11 @@ verify_jwt = false
 [[functions]]
 slug = "process-airdrop-claim"
 verify_jwt = false
+
+[[functions]]
+slug = "process-airdrop-payment"
+verify_jwt = false
+
+[[functions]]
+slug = "verify-airdrop-payment"
+verify_jwt = false

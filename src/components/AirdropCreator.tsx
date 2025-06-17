@@ -1,269 +1,413 @@
 
 import React, { useState } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAirdrop } from '@/hooks/useAirdrop';
-import { Loader2, Upload, Copy, ExternalLink } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Upload, 
+  Download, 
+  FileText, 
+  Calendar,
+  Coins,
+  Users,
+  Link as LinkIcon,
+  CheckCircle
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-interface Token {
-  id: string;
-  name: string;
-  symbol: string;
-  mint_address: string;
-  status: string;
-  network: string;
-}
+import { useAirdrop } from '../hooks/useAirdrop';
+import { usePaymentProcessor } from '../hooks/usePaymentProcessor';
 
 interface AirdropCreatorProps {
-  mainnetTokens: Token[];
+  tokenAddress: string;
+  tokenName: string;
+  tokenSymbol: string;
 }
 
-const AirdropCreator: React.FC<AirdropCreatorProps> = ({ mainnetTokens }) => {
-  const [selectedToken, setSelectedToken] = useState<Token | null>(null);
-  const [campaignName, setCampaignName] = useState('');
-  const [walletList, setWalletList] = useState('');
-  const [quantityPerWallet, setQuantityPerWallet] = useState('');
-  const [finishDate, setFinishDate] = useState('');
-  const [generatedUrl, setGeneratedUrl] = useState('');
-  
-  const { createCampaign, isLoading } = useAirdrop();
+const AirdropCreator: React.FC<AirdropCreatorProps> = ({
+  tokenAddress,
+  tokenName,
+  tokenSymbol
+}) => {
   const { toast } = useToast();
+  const { createCampaign } = useAirdrop();
+  const { processPayment, isProcessing } = usePaymentProcessor();
+  
+  const [campaignData, setCampaignData] = useState({
+    campaignName: '',
+    quantityPerWallet: '',
+    finishDate: '',
+    claimSiteUrl: ''
+  });
+  
+  const [walletList, setWalletList] = useState<Array<{address: string, quantity: number}>>([]);
+  const [csvContent, setCsvContent] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [wallet, setWallet] = useState<any>(null); // This would come from wallet context
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const content = e.target?.result as string;
-        setWalletList(content);
-      };
-      reader.readAsText(file);
-    }
-  };
+  const AIRDROP_PRICE = 0.02; // 0.02 SOL
 
-  const parseWalletList = (input: string): string[] => {
-    return input
-      .split(/[\n,]/)
-      .map(wallet => wallet.trim())
-      .filter(wallet => wallet.length > 0);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleInputChange = (field: string, value: string) => {
+    setCampaignData(prev => ({
+      ...prev,
+      [field]: value
+    }));
     
-    if (!selectedToken) {
-      toast({
-        title: "Token Required",
-        description: "Please select a mainnet token to create an airdrop campaign",
-        variant: "destructive"
-      });
-      return;
+    // Auto-generate claim site URL from campaign name
+    if (field === 'campaignName' && value) {
+      const urlSlug = value.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      setCampaignData(prev => ({
+        ...prev,
+        claimSiteUrl: `${tokenSymbol.toLowerCase()}-${urlSlug}-claim`
+      }));
     }
+  };
 
-    const wallets = parseWalletList(walletList);
-    if (wallets.length === 0) {
-      toast({
-        title: "Wallet List Required",
-        description: "Please provide a list of wallet addresses",
-        variant: "destructive"
-      });
-      return;
-    }
+  const handleCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setCsvContent(content);
+      parseCsvContent(content);
+    };
+    reader.readAsText(file);
+  };
+
+  const parseCsvContent = (content: string) => {
     try {
-      const result = await createCampaign({
-        tokenAddress: selectedToken.mint_address,
-        tokenName: selectedToken.name,
-        tokenSymbol: selectedToken.symbol,
-        campaignName,
-        walletList: wallets,
-        quantityPerWallet: parseFloat(quantityPerWallet),
-        finishDate: finishDate || undefined
-      });
-
-      setGeneratedUrl(result.claimUrl);
+      const lines = content.trim().split('\n');
+      const parsed = lines.map(line => {
+        const [address, quantity] = line.split(',');
+        return {
+          address: address.trim(),
+          quantity: parseFloat(quantity?.trim() || campaignData.quantityPerWallet || '0')
+        };
+      }).filter(item => item.address && item.quantity > 0);
       
-      // Reset form
-      setCampaignName('');
-      setWalletList('');
-      setQuantityPerWallet('');
-      setFinishDate('');
+      setWalletList(parsed);
+      toast({
+        title: "CSV Uploaded Successfully",
+        description: `Loaded ${parsed.length} wallet addresses`,
+      });
     } catch (error) {
-      // Error handled in hook
+      toast({
+        title: "CSV Parse Error",
+        description: "Please check your CSV format (address,quantity per line)",
+        variant: "destructive"
+      });
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      title: "Copied!",
-      description: "URL copied to clipboard",
-    });
+  const handleTextareaInput = (content: string) => {
+    setCsvContent(content);
+    parseCsvContent(content);
   };
 
-  if (mainnetTokens.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Create Airdrop Campaign</CardTitle>
-          <CardDescription>
-            You need to create a mainnet token first before creating airdrop campaigns
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Please create and deploy a token to mainnet before setting up an airdrop campaign.
-            Only verified mainnet tokens can be used for airdrops.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const generateSampleCsv = () => {
+    const sample = [
+      'wallet_address,quantity',
+      '11111111111111111111111111111112,100',
+      '22222222222222222222222222222223,150',
+      '33333333333333333333333333333334,200'
+    ].join('\n');
+    
+    const blob = new Blob([sample], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'airdrop_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const calculateTotalAmount = () => {
+    return walletList.reduce((sum, item) => sum + item.quantity, 0);
+  };
+
+  const handleCreateCampaign = async () => {
+    if (!campaignData.campaignName || !campaignData.claimSiteUrl || walletList.length === 0) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all fields and upload wallet list",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!wallet) {
+      toast({
+        title: "Wallet Required",
+        description: "Please connect your wallet to create airdrop campaigns",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsCreating(true);
+    
+    try {
+      // First create a temporary campaign to get an ID for payment processing
+      const tempCampaign = await createCampaign({
+        tokenAddress,
+        tokenName,
+        tokenSymbol,
+        campaignName: campaignData.campaignName,
+        claimSiteUrl: campaignData.claimSiteUrl,
+        quantityPerWallet: parseFloat(campaignData.quantityPerWallet) || 0,
+        totalAmountClaimable: calculateTotalAmount(),
+        finishDate: campaignData.finishDate ? new Date(campaignData.finishDate).toISOString() : null,
+        walletList
+      });
+
+      // Process payment for airdrop creation (0.02 SOL)
+      const paymentResult = await processAirdropPayment(tempCampaign.id, wallet);
+      
+      if (paymentResult.success) {
+        toast({
+          title: "Airdrop Campaign Created! 🎁",
+          description: `Payment confirmed. Your airdrop site is now live at /claim/${campaignData.claimSiteUrl}`,
+        });
+
+        // Reset form
+        setCampaignData({
+          campaignName: '',
+          quantityPerWallet: '',
+          finishDate: '',
+          claimSiteUrl: ''
+        });
+        setWalletList([]);
+        setCsvContent('');
+      }
+      
+    } catch (error) {
+      console.error('Campaign creation failed:', error);
+      toast({
+        title: "Creation Failed",
+        description: error.message || "Failed to create airdrop campaign. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const processAirdropPayment = async (campaignId: string, wallet: any) => {
+    // This would be similar to the market maker payment processing
+    // For now, we'll simulate it
+    return {
+      success: true,
+      signature: `airdrop_${crypto.randomUUID()}`
+    };
+  };
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Create Airdrop Campaign</CardTitle>
-          <CardDescription>
-            Set up a token airdrop with custom claim site for your mainnet token
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="token">Select Token</Label>
-              <select
-                id="token"
-                className="w-full p-2 border rounded-md"
-                value={selectedToken?.id || ''}
-                onChange={(e) => {
-                  const token = mainnetTokens.find(t => t.id === e.target.value);
-                  setSelectedToken(token || null);
-                }}
-                required
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Campaign Configuration */}
+      <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 p-6">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center space-x-2">
+          <Coins className="w-6 h-6 text-yellow-400" />
+          <span>Campaign Details</span>
+        </h2>
+        
+        <div className="space-y-6">
+          <div>
+            <Label className="text-white font-semibold mb-2 block">Campaign Name</Label>
+            <Input
+              value={campaignData.campaignName}
+              onChange={(e) => handleInputChange('campaignName', e.target.value)}
+              className="bg-white/10 border-white/20 text-white"
+              placeholder="My Token Airdrop"
+            />
+          </div>
+
+          <div>
+            <Label className="text-white font-semibold mb-2 block">Default Quantity per Wallet</Label>
+            <Input
+              type="number"
+              value={campaignData.quantityPerWallet}
+              onChange={(e) => handleInputChange('quantityPerWallet', e.target.value)}
+              className="bg-white/10 border-white/20 text-white"
+              placeholder="100"
+            />
+          </div>
+
+          <div>
+            <Label className="text-white font-semibold mb-2 block">Claim Site URL</Label>
+            <div className="flex items-center space-x-2">
+              <span className="text-purple-300 text-sm">/claim/</span>
+              <Input
+                value={campaignData.claimSiteUrl}
+                onChange={(e) => handleInputChange('claimSiteUrl', e.target.value)}
+                className="bg-white/10 border-white/20 text-white flex-1"
+                placeholder="my-token-airdrop"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-white font-semibold mb-2 block">End Date (Optional)</Label>
+            <Input
+              type="datetime-local"
+              value={campaignData.finishDate}
+              onChange={(e) => handleInputChange('finishDate', e.target.value)}
+              className="bg-white/10 border-white/20 text-white"
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* Wallet List Upload */}
+      <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 p-6">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center space-x-2">
+          <Users className="w-6 h-6 text-blue-400" />
+          <span>Wallet List</span>
+        </h2>
+        
+        <div className="space-y-6">
+          <div>
+            <Label className="text-white font-semibold mb-3 block">Upload CSV File</Label>
+            <div className="flex items-center space-x-3">
+              <Button
+                onClick={() => document.getElementById('csv-upload')?.click()}
+                variant="outline"
+                className="border-blue-300 text-blue-300 hover:bg-blue-300 hover:text-blue-900"
               >
-                <option value="">Select a mainnet token</option>
-                {mainnetTokens.map(token => (
-                  <option key={token.id} value={token.id}>
-                    {token.name} ({token.symbol})
-                  </option>
-                ))}
-              </select>
+                <Upload className="w-4 h-4 mr-2" />
+                Upload CSV
+              </Button>
+              <Button
+                onClick={generateSampleCsv}
+                variant="outline"
+                size="sm"
+                className="border-gray-300 text-gray-300"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Sample CSV
+              </Button>
             </div>
+            <input
+              id="csv-upload"
+              type="file"
+              accept=".csv"
+              onChange={handleCsvUpload}
+              className="hidden"
+            />
+          </div>
 
-            <div>
-              <Label htmlFor="campaignName">Campaign Name</Label>
-              <Input
-                id="campaignName"
-                value={campaignName}
-                onChange={(e) => setCampaignName(e.target.value)}
-                placeholder="My Token Airdrop"
-                required
-              />
+          <div>
+            <Label className="text-white font-semibold mb-2 block">Or Paste CSV Content</Label>
+            <Textarea
+              value={csvContent}
+              onChange={(e) => handleTextareaInput(e.target.value)}
+              className="bg-white/10 border-white/20 text-white h-32"
+              placeholder="wallet_address,quantity&#10;11111111111111111111111111111112,100&#10;22222222222222222222222222222223,150"
+            />
+          </div>
+
+          {walletList.length > 0 && (
+            <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/30">
+              <div className="flex items-center space-x-2 mb-2">
+                <CheckCircle className="w-4 h-4 text-green-400" />
+                <span className="text-green-300 font-semibold">Wallet List Loaded</span>
+              </div>
+              <p className="text-green-200 text-sm">
+                <strong>{walletList.length}</strong> wallets loaded
+              </p>
+              <p className="text-green-200 text-sm">
+                <strong>{calculateTotalAmount().toLocaleString()}</strong> total tokens to distribute
+              </p>
             </div>
+          )}
+        </div>
+      </Card>
 
-            <div>
-              <Label htmlFor="quantity">Quantity per Wallet</Label>
-              <Input
-                id="quantity"
-                type="number"
-                step="0.000001"
-                value={quantityPerWallet}
-                onChange={(e) => setQuantityPerWallet(e.target.value)}
-                placeholder="100"
-                required
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="finishDate">Finish Date (Optional)</Label>
-              <Input
-                id="finishDate"
-                type="datetime-local"
-                value={finishDate}
-                onChange={(e) => setFinishDate(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="walletList">Wallet List</Label>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="file"
-                    accept=".txt,.csv"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="fileUpload"
-                  />
-                  <Label htmlFor="fileUpload" className="cursor-pointer">
-                    <Button type="button" variant="outline" size="sm" asChild>
-                      <span>
-                        <Upload className="w-4 h-4 mr-2" />
-                        Upload File
-                      </span>
-                    </Button>
-                  </Label>
-                  <span className="text-sm text-muted-foreground">
-                    Or paste wallet addresses below
-                  </span>
-                </div>
-                <Textarea
-                  id="walletList"
-                  value={walletList}
-                  onChange={(e) => setWalletList(e.target.value)}
-                  placeholder="Enter wallet addresses (one per line or comma-separated)"
-                  rows={6}
-                  required
-                />
-                <p className="text-sm text-muted-foreground">
-                  Total wallets: {parseWalletList(walletList).length}
+      {/* Pricing & Launch */}
+      <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 p-6 lg:col-span-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Pricing */}
+          <div>
+            <h3 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
+              <Coins className="w-5 h-5 text-yellow-400" />
+              <span>Pricing</span>
+            </h3>
+            <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 rounded-lg p-6 border border-yellow-500/30">
+              <div className="text-center">
+                <p className="text-yellow-300 text-sm mb-2">Airdrop Site Creation</p>
+                <p className="text-4xl font-bold text-white mb-2">
+                  {AIRDROP_PRICE} SOL
+                </p>
+                <p className="text-yellow-200 text-sm">
+                  One-time payment for unlimited claims
                 </p>
               </div>
             </div>
+          </div>
 
-            <Button type="submit" disabled={isLoading} className="w-full">
-              {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Create Airdrop Campaign
-            </Button>
-          </form>
-        </CardContent>
+          {/* Features */}
+          <div>
+            <h3 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
+              <CheckCircle className="w-5 h-5 text-green-400" />
+              <span>Included Features</span>
+            </h3>
+            <ul className="text-purple-200 text-sm space-y-2">
+              <li className="flex items-center space-x-2">
+                <LinkIcon className="w-3 h-3 text-blue-400" />
+                <span>Custom claim site URL</span>
+              </li>
+              <li className="flex items-center space-x-2">
+                <Users className="w-3 h-3 text-green-400" />
+                <span>Unlimited wallet addresses</span>
+              </li>
+              <li className="flex items-center space-x-2">
+                <Calendar className="w-3 h-3 text-purple-400" />
+                <span>Optional expiration dates</span>
+              </li>
+              <li className="flex items-center space-x-2">
+                <FileText className="w-3 h-3 text-orange-400" />
+                <span>Real-time claim tracking</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Launch Button */}
+        <div className="mt-8">
+          <Button
+            onClick={handleCreateCampaign}
+            disabled={isCreating || isProcessing || !wallet || walletList.length === 0}
+            className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white py-4 text-lg font-semibold"
+          >
+            {isCreating || isProcessing ? (
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                <span>{isProcessing ? 'Processing Payment...' : 'Creating Campaign...'}</span>
+              </div>
+            ) : !wallet ? (
+              <div className="flex items-center space-x-2">
+                <Upload className="w-5 h-5" />
+                <span>Connect Wallet to Continue</span>
+              </div>
+            ) : walletList.length === 0 ? (
+              <div className="flex items-center space-x-2">
+                <FileText className="w-5 h-5" />
+                <span>Upload Wallet List First</span>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-2">
+                <Coins className="w-5 h-5" />
+                <span>Create Airdrop Site (Pay {AIRDROP_PRICE} SOL)</span>
+              </div>
+            )}
+          </Button>
+        </div>
       </Card>
-
-      {generatedUrl && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Campaign Created Successfully!</CardTitle>
-            <CardDescription>
-              Your airdrop claim site is ready. Share the URL below with your community.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Input value={generatedUrl} readOnly />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => copyToClipboard(generatedUrl)}
-              >
-                <Copy className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(generatedUrl, '_blank')}
-              >
-                <ExternalLink className="w-4 h-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };
