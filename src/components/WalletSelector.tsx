@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Wallet, ChevronDown, CheckCircle, Copy, ExternalLink } from 'lucide-react';
+import { Wallet, ChevronDown, CheckCircle, Copy, ExternalLink, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   Select,
@@ -54,30 +54,40 @@ const WalletSelector: React.FC<WalletSelectorProps> = ({ onWalletChange }) => {
 
   React.useEffect(() => {
     checkAvailableWallets();
+    checkExistingConnection();
   }, []);
 
   const checkAvailableWallets = () => {
     const available: WalletOption[] = [];
 
-    // Check for available wallets using standard detection methods
     if (typeof window !== 'undefined') {
-      // Phantom
       if (window.phantom?.solana?.isPhantom) {
         available.push(SUPPORTED_WALLETS[0]);
       }
       
-      // Solflare
       if (window.solflare?.isSolflare) {
         available.push(SUPPORTED_WALLETS[1]);
       }
       
-      // Backpack
       if (window.backpack?.isBackpack) {
         available.push(SUPPORTED_WALLETS[2]);
       }
     }
 
     setAvailableWallets(available);
+  };
+
+  const checkExistingConnection = async () => {
+    try {
+      const { solana } = window as any;
+      if (solana && solana.isPhantom && solana.isConnected && solana.publicKey) {
+        const walletInfo = createStandardWalletObject(solana, 'phantom');
+        setWallet(walletInfo);
+        onWalletChange(walletInfo);
+      }
+    } catch (error) {
+      console.log('No existing connection found');
+    }
   };
 
   const getWalletProvider = () => {
@@ -89,6 +99,31 @@ const WalletSelector: React.FC<WalletSelectorProps> = ({ onWalletChange }) => {
       return window.backpack;
     }
     return null;
+  };
+
+  // Create standardized wallet object that follows common patterns
+  const createStandardWalletObject = (provider: any, walletType: string) => {
+    return {
+      publicKey: provider.publicKey,
+      connected: true,
+      adapter: {
+        name: walletType,
+        url: SUPPORTED_WALLETS.find(w => w.adapter === walletType)?.url || '',
+        icon: SUPPORTED_WALLETS.find(w => w.adapter === walletType)?.icon || '',
+        publicKey: provider.publicKey,
+        connected: true,
+        signTransaction: provider.signTransaction?.bind(provider),
+        signAllTransactions: provider.signAllTransactions?.bind(provider),
+        connect: provider.connect?.bind(provider),
+        disconnect: provider.disconnect?.bind(provider)
+      },
+      // Direct methods for backward compatibility
+      signTransaction: provider.signTransaction?.bind(provider),
+      signAllTransactions: provider.signAllTransactions?.bind(provider),
+      connect: provider.connect?.bind(provider),
+      disconnect: provider.disconnect?.bind(provider),
+      type: walletType
+    };
   };
 
   const connectWallet = async () => {
@@ -108,28 +143,13 @@ const WalletSelector: React.FC<WalletSelectorProps> = ({ onWalletChange }) => {
         return;
       }
 
-      // Use the trusted connection method with proper error handling
-      const response = await provider.connect();
+      console.log(`Connecting to ${selectedWallet} wallet...`);
+      
+      // Use standard connection method with minimal configuration
+      const response = await provider.connect({ onlyIfTrusted: false });
       
       if (response?.publicKey) {
-        // Create standardized wallet object that matches what enhancedSolanaService expects
-        const walletInfo = {
-          publicKey: response.publicKey,
-          connected: true,
-          adapter: {
-            publicKey: response.publicKey,
-            connected: true,
-            signTransaction: provider.signTransaction?.bind(provider),
-            signAllTransactions: provider.signAllTransactions?.bind(provider),
-            connect: provider.connect?.bind(provider),
-            disconnect: provider.disconnect?.bind(provider),
-            name: selectedWallet
-          },
-          type: selectedWallet,
-          // Bind methods directly to wallet object for backward compatibility
-          signTransaction: provider.signTransaction?.bind(provider),
-          signAllTransactions: provider.signAllTransactions?.bind(provider),
-        };
+        const walletInfo = createStandardWalletObject(provider, selectedWallet);
         
         setWallet(walletInfo);
         onWalletChange(walletInfo);
@@ -201,6 +221,15 @@ const WalletSelector: React.FC<WalletSelectorProps> = ({ onWalletChange }) => {
   return (
     <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 p-4">
       <div className="space-y-4">
+        {/* Security Notice */}
+        <div className="flex items-start space-x-2 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+          <Info className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
+          <div className="text-sm text-blue-200">
+            <p className="font-medium">Secure Token Creation</p>
+            <p>This app creates tokens using standard Solana protocols. No private keys are stored or transmitted.</p>
+          </div>
+        </div>
+
         {/* Wallet Selection */}
         {!wallet && (
           <div className="space-y-3">
