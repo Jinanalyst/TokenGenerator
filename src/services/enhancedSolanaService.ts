@@ -1,3 +1,4 @@
+
 import { 
   Connection, 
   PublicKey, 
@@ -57,7 +58,7 @@ export class EnhancedSolanaService {
 
   // Updated with your working Alchemy endpoint first
   private static readonly MAINNET_RPCS: RPCEndpoint[] = [
-    { url: 'https://solana-mainnet.g.alchemy.com/v2/IrmhofdwFpA4ABFafBa4g', name: 'Alchemy Custom', priority: 1 },
+    { url: 'https://solana-mainnet.g.alchemy.com/v2/IrmhofdwFpA4ABFafBa4g', name: 'Alchemy Mainnet', priority: 1 },
     { url: 'https://api.mainnet-beta.solana.com', name: 'Official Mainnet', priority: 2 },
     { url: 'https://solana-api.projectserum.com', name: 'Project Serum', priority: 3 },
     { url: 'https://rpc.ankr.com/solana', name: 'Ankr', priority: 4 },
@@ -83,7 +84,7 @@ export class EnhancedSolanaService {
       rpc.url, 
       {
         commitment: 'confirmed' as Commitment,
-        confirmTransactionInitialTimeout: 20000,
+        confirmTransactionInitialTimeout: 30000,
         wsEndpoint: undefined,
         httpHeaders: {
           'Content-Type': 'application/json',
@@ -111,7 +112,7 @@ export class EnhancedSolanaService {
   }
 
   async checkConnection(): Promise<boolean> {
-    console.log(`Testing ${this.network} connections with your custom Alchemy endpoint...`);
+    console.log(`Testing ${this.network} connections with your Alchemy endpoint first...`);
     
     // Reset to first endpoint (your Alchemy endpoint)
     this.currentConnectionIndex = 0;
@@ -121,20 +122,20 @@ export class EnhancedSolanaService {
         const connection = this.connections[i];
         const endpointName = this.rpcEndpoints[i]?.name || `RPC ${i + 1}`;
         
-        console.log(`Testing ${endpointName} (${this.rpcEndpoints[i]?.url})...`);
+        console.log(`Testing ${endpointName}...`);
         
         // Quick connection test with shorter timeout for faster switching
         const tests = await Promise.allSettled([
           // Test 1: Get slot info
           Promise.race([
             connection.getSlot('confirmed'),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Slot timeout')), 3000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Slot timeout')), 5000))
           ]),
           
           // Test 2: Get latest blockhash
           Promise.race([
             connection.getLatestBlockhash('confirmed'),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Blockhash timeout')), 3000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Blockhash timeout')), 5000))
           ])
         ]);
 
@@ -158,6 +159,38 @@ export class EnhancedSolanaService {
     
     console.error(`❌ All ${this.network} RPC endpoints failed connection tests`);
     return false;
+  }
+
+  // Enhanced wallet validation to handle different wallet structures
+  private validateWallet(wallet: any): { isValid: boolean; error?: string } {
+    console.log('Validating wallet structure:', wallet);
+    
+    if (!wallet) {
+      return { isValid: false, error: 'Wallet is null or undefined' };
+    }
+
+    // Check for publicKey in multiple possible locations
+    const publicKey = wallet.publicKey || wallet.adapter?.publicKey;
+    if (!publicKey) {
+      return { isValid: false, error: 'Wallet publicKey not found' };
+    }
+
+    // Check connection status in multiple possible locations
+    const isConnected = wallet.connected || wallet.adapter?.connected || false;
+    if (!isConnected) {
+      return { isValid: false, error: 'Wallet not connected' };
+    }
+
+    // Check for signing methods in multiple possible locations
+    const signTransaction = wallet.signTransaction || wallet.adapter?.signTransaction;
+    const signAllTransactions = wallet.signAllTransactions || wallet.adapter?.signAllTransactions;
+    
+    if (!signTransaction || !signAllTransactions) {
+      return { isValid: false, error: 'Wallet signing methods not available' };
+    }
+
+    console.log('✅ Wallet validation passed');
+    return { isValid: true };
   }
 
   async getBalance(publicKey: PublicKey | string): Promise<number> {
@@ -203,17 +236,13 @@ export class EnhancedSolanaService {
     let estimatedFee = 0;
 
     try {
-      console.log(`Testing transaction readiness on ${this.network} with custom Alchemy endpoint...`);
+      console.log(`Testing transaction readiness on ${this.network}...`);
       
-      // Enhanced connection test with better error reporting
+      // Enhanced connection test
       const connectionStatus = await this.checkConnection();
       if (!connectionStatus) {
         const networkStatus = this.network === 'mainnet' ? 'Mainnet' : 'Devnet';
-        errors.push(`Cannot connect to ${networkStatus} - all RPC endpoints are currently unavailable. This could be due to:`);
-        errors.push('• Network congestion on Solana');
-        errors.push('• Temporary RPC provider issues');
-        errors.push('• Your internet connection');
-        errors.push('Please wait a few minutes and try again, or check if Solana network is experiencing issues.');
+        errors.push(`Cannot connect to ${networkStatus} - all RPC endpoints are currently unavailable`);
         
         return { 
           success: false, 
@@ -230,9 +259,10 @@ export class EnhancedSolanaService {
         errors.push('Fee recipient configuration is invalid');
       }
 
-      // Enhanced wallet validation
-      if (!wallet || !wallet.publicKey || !wallet.adapter) {
-        errors.push('Wallet not properly connected - please disconnect and reconnect your wallet');
+      // Enhanced wallet validation using the new method
+      const walletValidation = this.validateWallet(wallet);
+      if (!walletValidation.isValid) {
+        errors.push(`Wallet validation failed: ${walletValidation.error}`);
         return { 
           success: false, 
           errors, 
@@ -241,23 +271,15 @@ export class EnhancedSolanaService {
         };
       }
 
-      // Verify wallet adapter is functional
-      try {
-        if (!wallet.adapter.connected || !wallet.adapter.publicKey) {
-          errors.push('Wallet adapter not properly connected - please refresh page and reconnect');
-        }
-      } catch (error) {
-        console.error('Wallet adapter check failed:', error);
-        errors.push('Wallet adapter verification failed - try refreshing and reconnecting your wallet');
-      }
-
-      const walletPublicKey = typeof wallet.publicKey === 'string' 
-        ? new PublicKey(wallet.publicKey) 
-        : wallet.publicKey;
+      // Get the public key from wallet (handle different structures)
+      const walletPublicKey = wallet.publicKey || wallet.adapter?.publicKey;
+      const publicKey = typeof walletPublicKey === 'string' 
+        ? new PublicKey(walletPublicKey) 
+        : walletPublicKey;
 
       // Enhanced balance check with network-specific requirements
       console.log('Checking wallet balance...');
-      const balance = await this.getBalance(walletPublicKey);
+      const balance = await this.getBalance(publicKey);
       const requiredBalance = this.getMinimumBalance() / LAMPORTS_PER_SOL;
       const balanceCheck = balance >= requiredBalance;
       
@@ -272,20 +294,20 @@ export class EnhancedSolanaService {
         }
       }
 
-      // Enhanced fee estimation with better error handling
+      // Enhanced fee estimation
       try {
         const connection = this.getCurrentConnection();
         console.log('Getting latest blockhash for fee estimation...');
         const { blockhash } = await connection.getLatestBlockhash('confirmed');
         const testTransaction = new Transaction();
         testTransaction.recentBlockhash = blockhash;
-        testTransaction.feePayer = walletPublicKey;
+        testTransaction.feePayer = publicKey;
         
         // Add typical instructions to estimate real fees
         testTransaction.add(
           SystemProgram.transfer({
-            fromPubkey: walletPublicKey,
-            toPubkey: walletPublicKey,
+            fromPubkey: publicKey,
+            toPubkey: publicKey,
             lamports: 1
           })
         );
@@ -297,7 +319,7 @@ export class EnhancedSolanaService {
         console.log(`Estimated fees: ${estimatedFee} SOL`);
       } catch (error) {
         console.warn('Fee estimation failed:', error);
-        errors.push(`Failed to estimate transaction fees on ${this.network} - this could indicate network congestion`);
+        errors.push(`Failed to estimate transaction fees on ${this.network}`);
       }
 
       // Validate metadata inputs
@@ -315,20 +337,13 @@ export class EnhancedSolanaService {
       });
 
       // Rate limiting with network-specific limits
-      const walletKey = walletPublicKey.toString();
+      const publicKeyString = publicKey.toString();
       const rateLimit = this.network === 'mainnet' ? 2 : 3;
       const timeWindow = this.network === 'mainnet' ? 600000 : 300000;
       
-      if (!rateLimiter.isAllowed(`token_creation_${walletKey}`, rateLimit, timeWindow)) {
-        const remainingTime = Math.ceil(rateLimiter.getRemainingTime(`token_creation_${walletKey}`) / 1000);
+      if (!rateLimiter.isAllowed(`token_creation_${publicKeyString}`, rateLimit, timeWindow)) {
+        const remainingTime = Math.ceil(rateLimiter.getRemainingTime(`token_creation_${publicKeyString}`) / 1000);
         errors.push(`Rate limit exceeded for ${this.network}. Please wait ${remainingTime} seconds before trying again`);
-      }
-
-      // Mainnet-specific validations
-      if (this.network === 'mainnet') {
-        if (metadata.supply > 1000000000) {
-          errors.push('Consider if such a large supply is necessary for mainnet deployment');
-        }
       }
 
       const testResult = {
@@ -431,9 +446,13 @@ export class EnhancedSolanaService {
 
   private async createToken(wallet: any, metadata: TokenMetadata): Promise<TokenCreationResult> {
     const connection = this.getCurrentConnection();
-    const walletPublicKey = typeof wallet.publicKey === 'string' 
-      ? new PublicKey(wallet.publicKey) 
-      : wallet.publicKey;
+    
+    // Get public key from wallet (handle different structures)
+    const walletPublicKey = wallet.publicKey || wallet.adapter?.publicKey;
+    const publicKey = typeof walletPublicKey === 'string' 
+      ? new PublicKey(walletPublicKey) 
+      : walletPublicKey;
+    
     const feeRecipient = SecurityConfig.getFeeRecipient();
 
     console.log(`Creating token on ${this.network} using ${this.getCurrentEndpointName()}`);
@@ -446,12 +465,12 @@ export class EnhancedSolanaService {
     // Create optimized transaction for the network
     const createAndInitTransaction = new Transaction();
     createAndInitTransaction.recentBlockhash = blockhash;
-    createAndInitTransaction.feePayer = walletPublicKey;
+    createAndInitTransaction.feePayer = publicKey;
 
     // Add fee payment
     createAndInitTransaction.add(
       SystemProgram.transfer({
-        fromPubkey: walletPublicKey,
+        fromPubkey: publicKey,
         toPubkey: feeRecipient,
         lamports: EnhancedSolanaService.TOKEN_CREATION_FEE,
       })
@@ -460,7 +479,7 @@ export class EnhancedSolanaService {
     // Add mint account creation and initialization
     createAndInitTransaction.add(
       SystemProgram.createAccount({
-        fromPubkey: walletPublicKey,
+        fromPubkey: publicKey,
         newAccountPubkey: mintKeypair.publicKey,
         space: 82,
         lamports: mintRent,
@@ -472,16 +491,23 @@ export class EnhancedSolanaService {
       createInitializeMintInstruction(
         mintKeypair.publicKey,
         metadata.decimals,
-        walletPublicKey,
-        walletPublicKey
+        publicKey,
+        publicKey
       )
     );
 
     createAndInitTransaction.partialSign(mintKeypair);
 
-    // Enhanced transaction sending with proper confirmation
+    // Enhanced transaction sending with proper signing method detection
     console.log('Requesting wallet signature for mint creation...');
-    const signedCreateTransaction = await wallet.adapter.signTransaction(createAndInitTransaction);
+    
+    // Use the appropriate signing method from wallet
+    const signTransaction = wallet.signTransaction || wallet.adapter?.signTransaction;
+    if (!signTransaction) {
+      throw new Error('Wallet signing method not available');
+    }
+    
+    const signedCreateTransaction = await signTransaction(createAndInitTransaction);
     
     const createSignature = await connection.sendRawTransaction(
       signedCreateTransaction.serialize(),
@@ -518,18 +544,18 @@ export class EnhancedSolanaService {
     
     const associatedTokenAddress = await getAssociatedTokenAddress(
       mintKeypair.publicKey,
-      walletPublicKey
+      publicKey
     );
 
     const mintTransaction = new Transaction();
     mintTransaction.recentBlockhash = mintBlockhash;
-    mintTransaction.feePayer = walletPublicKey;
+    mintTransaction.feePayer = publicKey;
 
     mintTransaction.add(
       createAssociatedTokenAccountInstruction(
-        walletPublicKey,
+        publicKey,
         associatedTokenAddress,
-        walletPublicKey,
+        publicKey,
         mintKeypair.publicKey
       )
     );
@@ -538,7 +564,7 @@ export class EnhancedSolanaService {
       createMintToInstruction(
         mintKeypair.publicKey,
         associatedTokenAddress,
-        walletPublicKey,
+        publicKey,
         metadata.supply * Math.pow(10, metadata.decimals)
       )
     );
@@ -548,7 +574,7 @@ export class EnhancedSolanaService {
       mintTransaction.add(
         createSetAuthorityInstruction(
           mintKeypair.publicKey,
-          walletPublicKey,
+          publicKey,
           AuthorityType.MintTokens,
           null
         )
@@ -559,7 +585,7 @@ export class EnhancedSolanaService {
       mintTransaction.add(
         createSetAuthorityInstruction(
           mintKeypair.publicKey,
-          walletPublicKey,
+          publicKey,
           AuthorityType.FreezeAccount,
           null
         )
@@ -567,7 +593,7 @@ export class EnhancedSolanaService {
     }
 
     console.log('Requesting wallet signature for token creation...');
-    const signedMintTransaction = await wallet.adapter.signTransaction(mintTransaction);
+    const signedMintTransaction = await signTransaction(mintTransaction);
     
     const mintSignature = await connection.sendRawTransaction(
       signedMintTransaction.serialize(),
@@ -610,13 +636,19 @@ export class EnhancedSolanaService {
     
     if (metadata.imageBlob) {
       try {
+        // Get public key from wallet (handle different structures)
+        const walletPublicKey = wallet.publicKey || wallet.adapter?.publicKey;
+        const publicKey = typeof walletPublicKey === 'string' 
+          ? new PublicKey(walletPublicKey) 
+          : walletPublicKey;
+        
         const metadataResult = await this.metaplexService.uploadAndCreateMetadata(
           metadata.name,
           metadata.symbol,
           metadata.description || `${metadata.name} - Created with Solana Token Generator AI`,
           metadata.imageBlob,
           new PublicKey(result.mintAddress),
-          typeof wallet.publicKey === 'string' ? new PublicKey(wallet.publicKey) : wallet.publicKey
+          publicKey
         );
         
         result.metadataUri = metadataResult.metadataUri;

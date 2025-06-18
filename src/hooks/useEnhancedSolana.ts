@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { EnhancedSolanaService } from '../services/enhancedSolanaService';
 import { TokenMetadata } from '../services/solanaService';
@@ -49,7 +50,7 @@ export const useEnhancedSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
     setError(null);
 
     try {
-      if (!wallet || !wallet.publicKey || !wallet.adapter) {
+      if (!wallet || !wallet.publicKey) {
         throw new Error('Wallet not properly connected');
       }
 

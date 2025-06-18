@@ -112,11 +112,21 @@ const WalletSelector: React.FC<WalletSelectorProps> = ({ onWalletChange }) => {
       const response = await provider.connect();
       
       if (response?.publicKey) {
+        // Create standardized wallet object that matches what enhancedSolanaService expects
         const walletInfo = {
-          publicKey: response.publicKey.toString(),
+          publicKey: response.publicKey,
           connected: true,
-          adapter: provider,
+          adapter: {
+            publicKey: response.publicKey,
+            connected: true,
+            signTransaction: provider.signTransaction?.bind(provider),
+            signAllTransactions: provider.signAllTransactions?.bind(provider),
+            connect: provider.connect?.bind(provider),
+            disconnect: provider.disconnect?.bind(provider),
+            name: selectedWallet
+          },
           type: selectedWallet,
+          // Bind methods directly to wallet object for backward compatibility
           signTransaction: provider.signTransaction?.bind(provider),
           signAllTransactions: provider.signAllTransactions?.bind(provider),
         };
@@ -173,7 +183,8 @@ const WalletSelector: React.FC<WalletSelectorProps> = ({ onWalletChange }) => {
 
   const copyAddress = () => {
     if (wallet?.publicKey) {
-      navigator.clipboard.writeText(wallet.publicKey);
+      const address = typeof wallet.publicKey === 'string' ? wallet.publicKey : wallet.publicKey.toString();
+      navigator.clipboard.writeText(address);
       toast({
         title: "Address Copied!",
         description: "Wallet address copied to clipboard",
@@ -253,7 +264,10 @@ const WalletSelector: React.FC<WalletSelectorProps> = ({ onWalletChange }) => {
                 onClick={copyAddress}
               >
                 <Copy className="w-3 h-3 mr-1" />
-                {wallet.publicKey.slice(0, 4)}...{wallet.publicKey.slice(-4)}
+                {(() => {
+                  const address = typeof wallet.publicKey === 'string' ? wallet.publicKey : wallet.publicKey.toString();
+                  return `${address.slice(0, 4)}...${address.slice(-4)}`;
+                })()}
               </Badge>
             </div>
           ) : (
