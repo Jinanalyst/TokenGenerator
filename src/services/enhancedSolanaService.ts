@@ -1,3 +1,4 @@
+
 import { 
   Connection, 
   PublicKey, 
@@ -48,11 +49,10 @@ export class EnhancedSolanaService {
   private connection: Connection;
   private network: 'mainnet' | 'devnet';
   private metaplexService: MetaplexService;
-  private static readonly TOKEN_CREATION_FEE = 0.001 * LAMPORTS_PER_SOL; // Reduced fee
-  private static readonly MAINNET_MIN_BALANCE = 0.02 * LAMPORTS_PER_SOL; // Reduced minimum
+  private static readonly TOKEN_CREATION_FEE = 0.001 * LAMPORTS_PER_SOL;
+  private static readonly MAINNET_MIN_BALANCE = 0.02 * LAMPORTS_PER_SOL;
   private static readonly CONFIRMATION_TIMEOUT = 60000;
 
-  // Use single reliable RPC endpoint instead of cycling through multiple
   private static readonly MAINNET_RPC = 'https://solana-mainnet.g.alchemy.com/v2/IrmhofdwFpA4ABFafBa4g';
   private static readonly DEVNET_RPC = 'https://api.devnet.solana.com';
 
@@ -89,7 +89,6 @@ export class EnhancedSolanaService {
     try {
       console.log(`Testing ${this.network} connection...`);
       
-      // Simple connection test
       const slot = await Promise.race([
         this.connection.getSlot('confirmed'),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), 10000))
@@ -107,7 +106,6 @@ export class EnhancedSolanaService {
     }
   }
 
-  // Simplified wallet validation
   private validateWallet(wallet: any): { isValid: boolean; error?: string } {
     if (!wallet) {
       return { isValid: false, error: 'No wallet provided' };
@@ -118,7 +116,7 @@ export class EnhancedSolanaService {
       return { isValid: false, error: 'Wallet public key not found' };
     }
 
-    const isConnected = wallet.connected !== false; // Default to true if not explicitly false
+    const isConnected = wallet.connected !== false;
     if (!isConnected) {
       return { isValid: false, error: 'Wallet not connected' };
     }
@@ -155,7 +153,6 @@ export class EnhancedSolanaService {
         };
       }
 
-      // Validate wallet
       const walletValidation = this.validateWallet(wallet);
       if (!walletValidation.isValid) {
         errors.push(`Wallet: ${walletValidation.error}`);
@@ -166,13 +163,11 @@ export class EnhancedSolanaService {
         };
       }
 
-      // Get wallet public key
       const walletPublicKey = wallet.publicKey || wallet.adapter?.publicKey;
       const publicKey = typeof walletPublicKey === 'string' 
         ? new PublicKey(walletPublicKey) 
         : walletPublicKey;
 
-      // Check balance
       const balance = await this.getBalance(publicKey);
       const requiredBalance = this.getMinimumBalance() / LAMPORTS_PER_SOL;
       const balanceCheck = balance >= requiredBalance;
@@ -181,10 +176,8 @@ export class EnhancedSolanaService {
         errors.push(`Insufficient balance. Need ${requiredBalance.toFixed(4)} SOL, have ${balance.toFixed(4)} SOL`);
       }
 
-      // Simple fee estimation
       estimatedFee = (EnhancedSolanaService.TOKEN_CREATION_FEE + 0.005 * LAMPORTS_PER_SOL) / LAMPORTS_PER_SOL;
 
-      // Validate metadata
       const validations = [
         { field: 'name', validation: validateTokenName(metadata.name) },
         { field: 'symbol', validation: validateTokenSymbol(metadata.symbol) },
@@ -218,37 +211,49 @@ export class EnhancedSolanaService {
   }
 
   async createTokenWithRetry(wallet: any, metadata: TokenMetadata): Promise<TokenCreationResult> {
-    console.log(`Creating token with retry on ${this.network}...`);
+    console.log(`Creating token with metadata on ${this.network}...`);
     
-    // Use the metadata-enabled version
-    return await this.createTokenWithMetadata(wallet, metadata);
+    // Create the token first
+    const tokenResult = await this.createToken(wallet, metadata);
+    
+    // Then add metadata if image is provided
+    if (metadata.imageBlob && tokenResult) {
+      console.log('Adding metadata to token...');
+      const metadataResult = await this.addMetadataToToken(
+        wallet,
+        tokenResult.mintAddress,
+        metadata
+      );
+      
+      if (metadataResult.success) {
+        tokenResult.metadataUri = metadataResult.metadataUri;
+        console.log('✅ Token created with metadata successfully');
+      } else {
+        console.warn('⚠️ Token created but metadata failed:', metadataResult.error);
+        // Don't fail the entire operation if only metadata fails
+      }
+    }
+    
+    return tokenResult;
   }
 
-  // Simplified, Phantom-friendly token creation
   private async createToken(wallet: any, metadata: TokenMetadata): Promise<TokenCreationResult> {
-    // Get wallet public key
     const walletPublicKey = wallet.publicKey || wallet.adapter?.publicKey;
     const publicKey = typeof walletPublicKey === 'string' 
       ? new PublicKey(walletPublicKey) 
       : walletPublicKey;
     
-    console.log(`Creating token on ${this.network} with simplified approach`);
+    console.log(`Creating token on ${this.network}...`);
     
-    // Create mint keypair
     const mintKeypair = Keypair.generate();
-    
-    // Get latest blockhash
     const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
     
-    // Create a single, simplified transaction
     const transaction = new Transaction();
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = publicKey;
 
-    // Get mint rent
     const mintRent = await this.connection.getMinimumBalanceForRentExemption(82);
 
-    // Add create account instruction
     transaction.add(
       SystemProgram.createAccount({
         fromPubkey: publicKey,
@@ -259,7 +264,6 @@ export class EnhancedSolanaService {
       })
     );
 
-    // Add initialize mint instruction
     transaction.add(
       createInitializeMintInstruction(
         mintKeypair.publicKey,
@@ -269,13 +273,11 @@ export class EnhancedSolanaService {
       )
     );
 
-    // Get associated token address
     const associatedTokenAddress = await getAssociatedTokenAddress(
       mintKeypair.publicKey,
       publicKey
     );
 
-    // Add create associated token account instruction
     transaction.add(
       createAssociatedTokenAccountInstruction(
         publicKey,
@@ -285,7 +287,6 @@ export class EnhancedSolanaService {
       )
     );
 
-    // Add mint to instruction
     transaction.add(
       createMintToInstruction(
         mintKeypair.publicKey,
@@ -295,7 +296,6 @@ export class EnhancedSolanaService {
       )
     );
 
-    // Add authority revocation instructions if requested
     if (metadata.revokeMintAuthority) {
       transaction.add(
         createSetAuthorityInstruction(
@@ -318,10 +318,8 @@ export class EnhancedSolanaService {
       );
     }
 
-    // Sign the transaction with the mint keypair
     transaction.partialSign(mintKeypair);
 
-    // Simulate transaction first to catch errors
     try {
       console.log('Simulating transaction...');
       const simulation = await this.connection.simulateTransaction(transaction);
@@ -330,20 +328,12 @@ export class EnhancedSolanaService {
         throw new Error(`Transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
       }
       
-      console.log('Transaction simulation successful');
-    } catch (error) {
-      console.error('Transaction simulation failed:', error);
-      throw new Error(`Transaction simulation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-
-    // Sign and send transaction
-    console.log('Requesting wallet signature...');
-    const signTransaction = wallet.signTransaction || wallet.adapter?.signTransaction;
-    if (!signTransaction) {
-      throw new Error('Wallet signing method not available');
-    }
-    
-    try {
+      console.log('Requesting wallet signature...');
+      const signTransaction = wallet.signTransaction || wallet.adapter?.signTransaction;
+      if (!signTransaction) {
+        throw new Error('Wallet signing method not available');
+      }
+      
       const signedTransaction = await signTransaction(transaction);
       
       console.log('Sending transaction...');
@@ -358,7 +348,6 @@ export class EnhancedSolanaService {
       
       console.log(`Transaction sent: ${signature}`);
       
-      // Confirm transaction
       const confirmation = await this.connection.confirmTransaction({
         signature,
         blockhash,
@@ -369,7 +358,7 @@ export class EnhancedSolanaService {
         throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
       }
 
-      console.log(`Token created successfully on ${this.network}!`);
+      console.log(`✅ Token created successfully on ${this.network}!`);
 
       return {
         mintAddress: mintKeypair.publicKey.toBase58(),
@@ -378,84 +367,116 @@ export class EnhancedSolanaService {
         explorerUrl: this.getExplorerUrl(mintKeypair.publicKey.toBase58())
       };
     } catch (error) {
-      console.error('Transaction failed:', error);
-      throw new Error(`Transaction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Token creation transaction failed:', error);
+      throw new Error(`Token creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  // Create token with proper metadata
-  private async createTokenWithMetadata(wallet: any, metadata: TokenMetadata): Promise<TokenCreationResult> {
-    console.log('Creating token with metadata...');
-    
-    // First create the token
-    const result = await this.createToken(wallet, metadata);
-    
-    // Then add metadata if image is provided
-    if (metadata.imageBlob) {
+  private async addMetadataToToken(
+    wallet: any,
+    mintAddress: string,
+    metadata: TokenMetadata
+  ): Promise<{ success: boolean; metadataUri?: string; error?: string }> {
+    try {
+      console.log('Starting metadata addition process...');
+      
+      if (!metadata.imageBlob) {
+        return { success: false, error: 'No image provided for metadata' };
+      }
+
+      // Upload image and metadata to IPFS
+      const metadataResult = await this.metaplexService.uploadAndCreateMetadata(
+        metadata.name,
+        metadata.symbol,
+        metadata.description || `${metadata.name} - Created with Solana Token Generator AI`,
+        metadata.imageBlob,
+        new PublicKey(mintAddress),
+        wallet.publicKey || wallet.adapter?.publicKey
+      );
+
+      if (!metadataResult.success) {
+        return { 
+          success: false, 
+          error: metadataResult.error || 'Failed to upload metadata to IPFS' 
+        };
+      }
+
+      console.log('Metadata uploaded to IPFS:', metadataResult.metadataUri);
+
+      // Create metadata account transaction
+      const metadataAccountResult = await this.metaplexService.createMetadataAccount(
+        new PublicKey(mintAddress),
+        metadataResult.metadataUri,
+        metadata.name,
+        metadata.symbol,
+        wallet.publicKey || wallet.adapter?.publicKey
+      );
+
+      if (!metadataAccountResult.success) {
+        return {
+          success: false,
+          error: metadataAccountResult.error || 'Failed to create metadata account'
+        };
+      }
+
+      // Send metadata transaction
       try {
-        console.log('Adding metadata to token...');
-        this.metaplexService.setWallet(wallet); // Ensure wallet is set in Metaplex service
-        const walletPublicKey = wallet.publicKey || wallet.adapter?.publicKey;
-        const publicKey = typeof walletPublicKey === 'string' 
-          ? new PublicKey(walletPublicKey) 
-          : walletPublicKey;
-        
-        const metadataResult = await this.metaplexService.uploadAndCreateMetadata(
-          metadata.name,
-          metadata.symbol,
-          metadata.description || `${metadata.name} - Created with Solana Token Generator AI`,
-          metadata.imageBlob,
-          new PublicKey(result.mintAddress),
-          publicKey
-        );
-        
-        // Send the metadata transaction
         console.log('Sending metadata transaction...');
         const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
-        metadataResult.transaction.recentBlockhash = blockhash;
-        metadataResult.transaction.feePayer = publicKey;
-        
-        // Sign and send metadata transaction
+        metadataAccountResult.transaction.recentBlockhash = blockhash;
+        metadataAccountResult.transaction.feePayer = wallet.publicKey || wallet.adapter?.publicKey;
+
         const signTransaction = wallet.signTransaction || wallet.adapter?.signTransaction;
         if (!signTransaction) {
-          throw new Error('Wallet signing method not available for metadata transaction');
+          throw new Error('Wallet signing method not available for metadata');
         }
 
-        const signedMetadataTransaction = await signTransaction(metadataResult.transaction);
+        const signedMetadataTransaction = await signTransaction(metadataAccountResult.transaction);
         const metadataSignature = await this.connection.sendRawTransaction(
           signedMetadataTransaction.serialize(),
           { 
-            skipPreflight: true, // Skip preflight to avoid simulation errors with new metadata accounts
+            skipPreflight: true, // Skip preflight for metadata accounts
             preflightCommitment: 'confirmed',
-            maxRetries: 3
+            maxRetries: 2
           }
         );
         
         console.log(`Metadata transaction sent: ${metadataSignature}`);
         
-        // Confirm metadata transaction
-        const confirmation = await this.connection.confirmTransaction({
+        // Don't wait for confirmation to avoid blocking
+        // The metadata will appear once confirmed
+        this.connection.confirmTransaction({
           signature: metadataSignature,
           blockhash,
           lastValidBlockHeight
-        }, 'confirmed');
+        }, 'confirmed').then((confirmation) => {
+          if (confirmation.value.err) {
+            console.error('Metadata transaction confirmation failed:', confirmation.value.err);
+          } else {
+            console.log('✅ Metadata transaction confirmed successfully');
+          }
+        }).catch((error) => {
+          console.error('Metadata confirmation error:', error);
+        });
 
-        if (confirmation.value.err) {
-          console.error('Metadata transaction confirmation failed:', confirmation.value.err);
-          throw new Error(`Metadata transaction failed: ${JSON.stringify(confirmation.value.err)}`);
-        }
-        
-        console.log('Metadata transaction confirmed successfully');
-        
-        result.metadataUri = metadataResult.metadataUri;
-        console.log('Metadata added successfully:', metadataResult.metadataUri);
-      } catch (error) {
-        console.error('Metadata upload failed, but token was created:', error);
-        // Do not re-throw error, allow token creation to be reported as success
+        return {
+          success: true,
+          metadataUri: metadataResult.metadataUri
+        };
+      } catch (metadataError) {
+        console.error('Metadata transaction failed:', metadataError);
+        return {
+          success: false,
+          error: `Metadata transaction failed: ${metadataError instanceof Error ? metadataError.message : 'Unknown error'}`
+        };
       }
+    } catch (error) {
+      console.error('Metadata addition failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown metadata error'
+      };
     }
-    
-    return result;
   }
 
   getExplorerUrl(address: string): string {

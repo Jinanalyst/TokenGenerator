@@ -289,12 +289,12 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     setIsCreating(true);
     
     try {
-      console.log(`Starting token creation on ${editableData.network} with validated data:`, editableData);
+      console.log(`Starting token creation on ${editableData.network} with metadata:`, editableData);
 
       // Show progress toast
       toast({
-        title: "Creating Token",
-        description: `Connecting to ${editableData.network} and preparing transaction...`,
+        title: "Creating Token with Metadata",
+        description: `Preparing transaction and uploading metadata to IPFS...`,
       });
 
       const metadata = {
@@ -316,13 +316,22 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
         setTokenResult(result);
         setIsCreated(true);
         
-        let successMessage = `Your ${editableData.symbol} token is now live on Solana ${editableData.network}!`;
+        let successMessage = `🎉 Your ${editableData.symbol} token is now live on Solana ${editableData.network}!`;
+        
         if (result.metadataUri) {
-          successMessage += ' Logo and metadata have been uploaded to IPFS and will appear in wallets and explorers.';
+          successMessage += '\n\n✅ Custom metadata (name, symbol, logo) has been uploaded to IPFS and will appear in wallets and explorers within a few minutes.';
+          
+          // Show metadata details
+          toast({
+            title: "Metadata Successfully Added! 🖼️",
+            description: `Your token's custom name "${editableData.name}", symbol "${editableData.symbol}", and logo have been uploaded to IPFS and linked to your token. They will appear in Phantom wallet and other explorers shortly.`,
+          });
+        } else if (imageBlob) {
+          successMessage += '\n\n⚠️ Token created successfully, but metadata upload encountered issues. Your token is functional but may not show custom logo immediately.';
         }
         
         toast({
-          title: "Token Created Successfully! 🎉",
+          title: "Token Created Successfully! 🚀",
           description: successMessage,
         });
 
@@ -331,19 +340,20 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
           setTimeout(() => {
             const marketMakerUrl = `/market-maker?mint=${encodeURIComponent(result.mintAddress)}&symbol=${encodeURIComponent(editableData.symbol)}&name=${encodeURIComponent(editableData.name)}&network=${encodeURIComponent(editableData.network)}`;
             navigate(marketMakerUrl);
-          }, 2000);
+          }, 3000);
         }
       }
     } catch (error) {
       console.error(`Token creation failed on ${editableData.network}:`, error);
       const errorMessage = error instanceof Error ? error.message : `Token creation failed on ${editableData.network}`;
       
-      // Check for network-specific errors and provide better guidance
       let userMessage = errorMessage;
       if (errorMessage.toLowerCase().includes('network') || 
           errorMessage.toLowerCase().includes('connection') || 
           errorMessage.toLowerCase().includes('rpc')) {
-        userMessage = `Network connection error on ${editableData.network}. Please check your internet connection and try again. If the problem persists, the network may be experiencing congestion.`;
+        userMessage = `Network connection error on ${editableData.network}. Please check your internet connection and try again.`;
+      } else if (errorMessage.toLowerCase().includes('metadata')) {
+        userMessage = `Token was created but metadata upload failed. Your token is functional but may not show custom details immediately. You can try again or add metadata later.`;
       }
       
       toast({
@@ -753,13 +763,16 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
               <p className="text-green-100 font-mono text-sm break-all">{tokenResult.mintAddress}</p>
             </div>
 
-            {/* Metadata URI display */}
+            {/* Enhanced Metadata URI display */}
             {tokenResult.metadataUri && (
               <div className="bg-purple-500/10 rounded-lg p-4 border border-purple-500/30">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center space-x-2">
                     <ImageIcon className="w-4 h-4 text-purple-400" />
                     <span className="text-purple-300 font-semibold">Metadata URI (IPFS)</span>
+                    <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-200">
+                      ✅ Successfully Uploaded
+                    </Badge>
                   </div>
                   <Button
                     variant="ghost"
@@ -771,12 +784,33 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
                   </Button>
                 </div>
                 <p className="text-purple-100 text-sm break-all">{tokenResult.metadataUri}</p>
-                <p className="text-purple-200 text-xs mt-2">
-                  ✅ Token logo and metadata uploaded to IPFS - will appear in wallets and explorers
+                <div className="mt-3 p-3 bg-green-500/10 rounded border border-green-500/20">
+                  <p className="text-green-200 text-sm font-semibold mb-2">✅ Your Token Metadata is Live!</p>
+                  <div className="space-y-1 text-sm text-green-100">
+                    <p>• Name: "{editableData.name}" is now on-chain</p>
+                    <p>• Symbol: "{editableData.symbol}" is registered</p>
+                    <p>• Logo: Uploaded to IPFS and linked to your token</p>
+                    <p>• Will appear in Phantom wallet and explorers within 2-5 minutes</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Show warning if no metadata was added */}
+            {!tokenResult.metadataUri && imageBlob && (
+              <div className="bg-yellow-500/10 rounded-lg p-4 border border-yellow-500/30">
+                <div className="flex items-center space-x-2 mb-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                  <span className="text-yellow-300 font-semibold">Metadata Upload Issue</span>
+                </div>
+                <p className="text-yellow-200 text-sm">
+                  Your token was created successfully, but the custom metadata (name, symbol, logo) couldn't be uploaded to IPFS. 
+                  Your token is fully functional but may not show custom details in wallets immediately.
                 </p>
               </div>
             )}
 
+            {/* Mainnet Market Maker Section */}
             {editableData.network === 'mainnet' && (
               <div className="bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg p-4 border border-blue-500/30">
                 <div className="flex items-center space-x-2 mb-2">
@@ -799,6 +833,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
               </div>
             )}
 
+            {/* DEXScreener Listing */}
             <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-500/30">
               <div className="flex items-center space-x-2 mb-2">
                 <ExternalLink className="w-4 h-4 text-blue-400" />
@@ -810,6 +845,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
               </p>
             </div>
 
+            {/* Action Buttons */}
             <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-3">
               <Button
                 variant="outline"
