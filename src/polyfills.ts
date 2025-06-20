@@ -1,4 +1,5 @@
 
+
 import { Buffer } from 'buffer';
 
 // Make Buffer available globally
@@ -29,12 +30,12 @@ if (typeof window !== 'undefined' && !window.util) {
           });
         }
       },
-      format: function(f: string, ...args: any[]) {
-        return f.replace(/%[sdj%]/g, function(x) {
+      format: function(f: string, ...args: any[]): string {
+        return f.replace(/%[sdj%]/g, function(x: string): string {
           if (args.length === 0) return x;
           switch (x) {
             case '%s': return String(args.shift());
-            case '%d': return Number(args.shift());
+            case '%d': return String(Number(args.shift()));
             case '%j':
               try {
                 return JSON.stringify(args.shift());
@@ -110,3 +111,4 @@ if (typeof window !== 'undefined' && !window.url) {
 }
 
 export {};
+

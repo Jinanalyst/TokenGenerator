@@ -1,4 +1,5 @@
 
+
 declare global {
   interface Window {
     Buffer: typeof Buffer;
@@ -26,3 +27,4 @@ declare global {
 }
 
 export {};
+
