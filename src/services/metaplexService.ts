@@ -9,8 +9,8 @@ import {
   TokenStandard,
 } from '@metaplex-foundation/mpl-token-metadata';
 import { walletAdapterIdentity } from '@metaplex-foundation/umi-signer-wallet-adapters';
-import { some, none } from '@metaplex-foundation/umi/serializers';
-import { generateSigner, publicKey, createSignerFromKeypair } from '@metaplex-foundation/umi';
+import { some, none } from '@metaplex-foundation/umi';
+import { generateSigner, publicKey, createSignerFromKeypair, percentAmount } from '@metaplex-foundation/umi';
 
 export class MetaplexService {
   private connection: Connection;
@@ -107,7 +107,7 @@ export class MetaplexService {
         name: tokenName,
         symbol: tokenSymbol,
         uri: metadataUri,
-        sellerFeeBasisPoints: 0,
+        sellerFeeBasisPoints: percentAmount(0),
         creators: some([{ 
           address: this.umi.identity.publicKey, 
           verified: true, 

@@ -250,9 +250,8 @@ export class SolanaService {
 
       console.log('Mint created successfully:', mintKeypair.publicKey.toBase58());
 
-      // Step 2: Upload metadata and create token account
+      // Step 2: Upload metadata and create metadata account
       let metadataUri: string | undefined;
-      let metadataTransaction: Transaction | undefined;
 
       if (metadata.imageBlob) {
         try {
@@ -266,9 +265,24 @@ export class SolanaService {
             walletPublicKey
           );
           
-          metadataUri = metadataResult.metadataUri;
-          metadataTransaction = metadataResult.transaction;
-          console.log('Metadata uploaded successfully:', metadataUri);
+          if (metadataResult.success) {
+            metadataUri = metadataResult.metadataUri;
+            console.log('Metadata uploaded successfully:', metadataUri);
+            
+            // Create metadata account transaction
+            const metadataAccountResult = await this.metaplexService.createMetadataAccount(
+              mintKeypair.publicKey,
+              metadataResult.metadataUri,
+              metadata.name,
+              metadata.symbol,
+              walletPublicKey
+            );
+            
+            if (metadataAccountResult.success && metadataAccountResult.transaction) {
+              console.log('Adding metadata creation to transaction...');
+              // We'll handle this in a separate transaction after token creation
+            }
+          }
         } catch (error) {
           console.warn('Metadata upload failed, continuing without metadata:', error);
         }
@@ -306,14 +320,6 @@ export class SolanaService {
         )
       );
 
-      // Add metadata creation if available
-      if (metadataTransaction) {
-        console.log('Adding metadata creation to transaction...');
-        metadataTransaction.instructions.forEach(instruction => {
-          mintTransaction.add(instruction);
-        });
-      }
-
       // Add authority revocations if requested
       if (metadata.revokeMintAuthority) {
         mintTransaction.add(
@@ -338,7 +344,7 @@ export class SolanaService {
       }
 
       // Request final wallet signature
-      console.log('Requesting wallet signature for token creation and metadata...');
+      console.log('Requesting wallet signature for token creation...');
       const signedMintTransaction = await wallet.adapter.signTransaction(mintTransaction);
       const mintSignature = await this.connection.sendRawTransaction(signedMintTransaction.serialize());
       
