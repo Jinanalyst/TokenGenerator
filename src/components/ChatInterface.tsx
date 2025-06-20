@@ -53,9 +53,9 @@ const extractTokenSupply = (text: string): number | null => {
 };
 
 const extractNetwork = (text: string): 'mainnet' | 'devnet' | null => {
-  const input = text.toLowerCase();
-  if (input.includes('mainnet')) return 'mainnet';
-  if (input.includes('devnet')) return 'devnet';
+  const input = text.toLowerCase().replace(/\s+/g, '');
+  if (input.includes('mainnet') || input.includes('mainnetwork')) return 'mainnet';
+  if (input.includes('devnet') || input.includes('devnetwork') || input.includes('dev-net')) return 'devnet';
   return null;
 };
 
@@ -84,7 +84,7 @@ const ChatInterface = () => {
   });
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [shouldShowPanel, setShouldShowPanel] = useState(true);
+  const [shouldShowPanel, setShouldShowPanel] = useState(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
