@@ -5,7 +5,49 @@ import { Buffer } from 'buffer';
 if (typeof window !== 'undefined') {
   window.Buffer = Buffer;
   window.global = window.global || window;
-  window.process = window.process || { env: {} };
+  window.process = { env: {} };
+}
+
+// Polyfill for util module (needed by http-browserify)
+if (typeof window !== 'undefined' && !window.util) {
+  try {
+    const util = require('util');
+    window.util = util;
+  } catch (e) {
+    // Fallback util polyfill with inherits function
+    window.util = {
+      inherits: function(ctor: any, superCtor: any) {
+        if (superCtor) {
+          ctor.super_ = superCtor;
+          ctor.prototype = Object.create(superCtor.prototype, {
+            constructor: {
+              value: ctor,
+              enumerable: false,
+              writable: true,
+              configurable: true
+            }
+          });
+        }
+      },
+      format: function(f: string, ...args: any[]) {
+        return f.replace(/%[sdj%]/g, function(x) {
+          if (args.length === 0) return x;
+          switch (x) {
+            case '%s': return String(args.shift());
+            case '%d': return Number(args.shift());
+            case '%j':
+              try {
+                return JSON.stringify(args.shift());
+              } catch (_) {
+                return '[Circular]';
+              }
+            default:
+              return x;
+          }
+        });
+      }
+    };
+  }
 }
 
 // Polyfill for stream module

@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => ({
       "stream": "stream-browserify",
       "http": "http-browserify",
       "url": "url",
+      "util": "util",
     },
   },
   define: {
@@ -35,6 +36,7 @@ export default defineConfig(({ mode }) => ({
       'stream-browserify', 
       'http-browserify', 
       'url',
+      'util',
       '@metaplex-foundation/umi-bundle-defaults',
       '@metaplex-foundation/mpl-token-metadata'
     ],
