@@ -84,7 +84,7 @@ const ChatInterface = () => {
   });
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [shouldShowPanel, setShouldShowPanel] = useState(false);
+  const [shouldShowPanel, setShouldShowPanel] = useState(true);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -176,6 +176,8 @@ const ChatInterface = () => {
     setInputValue('');
     
     const aiResponse = await getAIResponse(currentInput);
+
+    console.log("AI Response:", aiResponse);
 
     const aiMessage: Message = {
       id: (Date.now() + 1).toString(),
