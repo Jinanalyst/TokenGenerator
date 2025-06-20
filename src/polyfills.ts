@@ -1,12 +1,13 @@
 
 
+
 import { Buffer } from 'buffer';
 
 // Make Buffer available globally
 if (typeof window !== 'undefined') {
   window.Buffer = Buffer;
   window.global = window.global || window;
-  window.process = { env: {} };
+  window.process = window.process || { env: {} };
 }
 
 // Polyfill for util module (needed by http-browserify)
@@ -108,7 +109,3 @@ if (typeof window !== 'undefined' && !window.url) {
       },
     };
   }
-}
-
-export {};
-
