@@ -39,6 +39,7 @@ import {
 } from '../utils/inputValidation';
 import { createUserFriendlyError } from '../utils/errorHandling';
 import { openSecureUrl } from '../utils/urlSecurity';
+import { useWallet } from '@solana/wallet-adapter-react';
 
 interface TokenCreationPanelProps {
   tokenData: {
@@ -52,13 +53,11 @@ interface TokenCreationPanelProps {
     revokeUpdateAuthority?: boolean;
     image?: string;
   };
-  wallet?: any;
   onTokenDataChange?: (data: any) => void;
 }
 
 const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({ 
   tokenData, 
-  wallet, 
   onTokenDataChange 
 }) => {
   const [isCreating, setIsCreating] = useState(false);
@@ -86,7 +85,8 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
   
   const { toast } = useToast();
   const navigate = useNavigate();
-  const solana = useEnhancedSolana(editableData.network as 'mainnet' | 'devnet');
+  const solana = useEnhancedSolana();
+  const { wallet } = useWallet();
 
   // Update local state when tokenData changes
   useEffect(() => {
@@ -103,6 +103,12 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
     });
     setImagePreview(tokenData.image || null);
   }, [tokenData]);
+
+  useEffect(() => {
+    if (solana.service) {
+      handleInputChange('network', solana.network);
+    }
+  }, [solana.network, solana.service]);
 
   const validateField = (field: string, value: any): string | null => {
     switch (field) {
@@ -179,7 +185,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
   };
 
   const handleTestTransaction = async () => {
-    if (!wallet || !wallet.publicKey) {
+    if (!wallet?.adapter?.publicKey) {
       toast({
         title: "Wallet Required",
         description: "Please connect your wallet to test the transaction",
@@ -211,7 +217,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
         revokeUpdateAuthority: editableData.revokeUpdateAuthority
       };
 
-      const result = await solana.testTransaction(metadata, wallet);
+      const result = await solana.testTransaction(metadata);
       setTestResult(result);
       
       if (result.success) {
@@ -255,7 +261,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
   };
 
   const handleCreateToken = async () => {
-    if (!wallet || !wallet.publicKey) {
+    if (!wallet?.adapter?.publicKey) {
       toast({
         title: "Wallet Required",
         description: "Please connect your wallet to create tokens",
@@ -310,7 +316,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
         revokeUpdateAuthority: editableData.revokeUpdateAuthority
       };
 
-      const result = await solana.createToken(metadata, wallet);
+      const result = await solana.createToken(metadata);
       
       if (result) {
         setTokenResult(result);
@@ -393,6 +399,17 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
   };
 
   const networkConfig = getNetworkConfig();
+
+  if (!solana.service) {
+    return (
+      <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 p-6 flex items-center justify-center">
+        <div className="flex items-center space-x-2 text-purple-200">
+          <div className="w-4 h-4 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin"></div>
+          <span>Initializing Solana connection...</span>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 p-6">
@@ -753,6 +770,20 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
               <p className="text-green-100 font-mono text-sm break-all">{tokenResult.mintAddress}</p>
             </div>
 
+            {/* Metadata Upload Issue */}
+            {!tokenResult.metadataUri && (
+              <div className="bg-yellow-500/10 rounded-lg p-4 border border-yellow-500/30">
+                <div className="flex items-center space-x-2 mb-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                  <span className="text-yellow-300 font-semibold">Metadata Upload Issue</span>
+                </div>
+                <p className="text-yellow-200 text-sm">
+                  Your token was created successfully, but the custom metadata (name, symbol, logo) couldn't be uploaded to IPFS.
+                  Your token is fully functional but may not show custom details in wallets immediately.
+                </p>
+              </div>
+            )}
+
             {/* Metadata URI display */}
             {tokenResult.metadataUri && (
               <div className="bg-purple-500/10 rounded-lg p-4 border border-purple-500/30">
@@ -840,48 +871,45 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
 
         {/* Action Buttons with enhanced network awareness */}
         {!isCreated && (
-          <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 justify-center">
-            <Button
-              onClick={handleTestTransaction}
-              disabled={isTesting || !wallet || !solana.isConnected}
-              variant="outline"
-              className="text-white border-white/20 hover:bg-white/10"
-            >
-              {isTesting ? (
-                <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>Testing {editableData.network}...</span>
-                </div>
-              ) : (
-                <div className="flex items-center space-x-2">
-                  <TestTube className="w-4 h-4" />
-                  <span>Test {editableData.network.toUpperCase()}</span>
-                </div>
-              )}
-            </Button>
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {wallet?.adapter?.publicKey && solana.isConnected && (
+              <Button
+                onClick={handleTestTransaction}
+                disabled={isTesting}
+                variant="secondary"
+                className="w-full"
+              >
+                {isTesting ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    <span>Testing {editableData.network}...</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center space-x-2">
+                    <TestTube className="w-4 h-4" />
+                    <span>Test {editableData.network.toUpperCase()}</span>
+                  </div>
+                )}
+              </Button>
+            )}
 
             <Button
               onClick={handleCreateToken}
-              disabled={isCreating || !wallet || !solana.isConnected || (testResult && !testResult.success)}
-              className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white px-8 py-3 text-lg font-semibold"
+              disabled={isCreating || !wallet?.adapter?.publicKey || !solana.isConnected || (testResult && !testResult.success)}
+              className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white"
             >
               {isCreating ? (
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center justify-center space-x-2">
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                   <span>Creating on {editableData.network}...</span>
                 </div>
-              ) : !wallet ? (
-                <div className="flex items-center space-x-2">
-                  <Lock className="w-5 h-5" />
-                  <span>Connect Wallet to Create</span>
-                </div>
               ) : !solana.isConnected ? (
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center justify-center space-x-2">
                   <AlertTriangle className="w-5 h-5" />
                   <span>Network Disconnected</span>
                 </div>
               ) : (
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center justify-center space-x-2">
                   <Zap className="w-5 h-5" />
                   <span>Create on {editableData.network.toUpperCase()} (0.02 SOL)</span>
                 </div>

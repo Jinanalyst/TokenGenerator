@@ -26,8 +26,9 @@ import {
 import { SecurityConfig } from './securityConfig';
 import { createUserFriendlyError, rateLimiter } from '../utils/errorHandling';
 import { validateTokenName, validateTokenSymbol, validateTokenSupply, validateDecimals } from '../utils/inputValidation';
-import { MetaplexService } from './metaplexService';
 import { TokenMetadata, TokenCreationResult } from './solanaService';
+import { IPFSService } from '../services/ipfsService';
+import { supabase } from '../integrations/supabase/client';
 
 interface RPCEndpoint {
   url: string;
@@ -45,9 +46,8 @@ export interface TransactionTest {
 }
 
 export class EnhancedSolanaService {
-  private connection: Connection;
-  private network: 'mainnet' | 'devnet';
-  private metaplexService: MetaplexService;
+  public connection: Connection;
+  public network: 'mainnet' | 'devnet';
   private static readonly TOKEN_CREATION_FEE = 0.001 * LAMPORTS_PER_SOL; // Reduced fee
   private static readonly MAINNET_MIN_BALANCE = 0.02 * LAMPORTS_PER_SOL; // Reduced minimum
   private static readonly CONFIRMATION_TIMEOUT = 60000;
@@ -56,10 +56,22 @@ export class EnhancedSolanaService {
   private static readonly MAINNET_RPC = 'https://solana-mainnet.g.alchemy.com/v2/IrmhofdwFpA4ABFafBa4g';
   private static readonly DEVNET_RPC = 'https://api.devnet.solana.com';
 
-  constructor(network: 'mainnet' | 'devnet', wallet?: any) {
-    this.network = network;
-    this.initializeConnection();
-    this.metaplexService = new MetaplexService(this.connection, wallet);
+  constructor(network: 'mainnet' | 'devnet', connection?: Connection) {
+    if (connection) {
+      this.connection = connection;
+      // Infer network from connection if possible, otherwise default to provided network
+      const endpoint = this.connection.rpcEndpoint;
+      if (endpoint && endpoint.includes('mainnet')) {
+        this.network = 'mainnet';
+      } else if (endpoint && endpoint.includes('devnet')) {
+        this.network = 'devnet';
+      } else {
+        this.network = network;
+      }
+    } else {
+      this.network = network;
+      this.initializeConnection();
+    }
   }
 
   private initializeConnection() {
@@ -79,10 +91,6 @@ export class EnhancedSolanaService {
         }
       }
     );
-  }
-
-  setWallet(wallet: any) {
-    this.metaplexService.setWallet(wallet);
   }
 
   async checkConnection(): Promise<boolean> {
@@ -387,71 +395,43 @@ export class EnhancedSolanaService {
   private async createTokenWithMetadata(wallet: any, metadata: TokenMetadata): Promise<TokenCreationResult> {
     console.log('Creating token with metadata...');
     
-    // First create the token
+    // First create the token on the client
     const result = await this.createToken(wallet, metadata);
     
-    // Then add metadata if image is provided
+    // Then, if an image was provided, call the backend to create the on-chain metadata
     if (metadata.imageBlob) {
       try {
-        console.log('Adding metadata to token...');
-        this.metaplexService.setWallet(wallet); // Ensure wallet is set in Metaplex service
-        const walletPublicKey = wallet.publicKey || wallet.adapter?.publicKey;
-        const publicKey = typeof walletPublicKey === 'string' 
-          ? new PublicKey(walletPublicKey) 
-          : walletPublicKey;
+        console.log('Uploading image and preparing metadata for backend...');
+        const imageUrl = await IPFSService.uploadImageToIPFS(metadata.imageBlob, `${metadata.symbol.toLowerCase()}_logo.png`);
+        const tokenMetadataJson = {
+          name: metadata.name,
+          symbol: metadata.symbol,
+          description: metadata.description || `${metadata.name} - Created with Solana Token Generator AI`,
+          image: imageUrl,
+        };
+        const metadataUri = await IPFSService.uploadMetadataToIPFS(tokenMetadataJson);
         
-        const metadataResult = await this.metaplexService.uploadAndCreateMetadata(
-          metadata.name,
-          metadata.symbol,
-          metadata.description || `${metadata.name} - Created with Solana Token Generator AI`,
-          metadata.imageBlob,
-          new PublicKey(result.mintAddress),
-          publicKey
-        );
+        console.log('Calling Supabase function to create metadata on-chain...');
         
-        // Send the metadata transaction
-        console.log('Sending metadata transaction...');
-        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
-        metadataResult.transaction.recentBlockhash = blockhash;
-        metadataResult.transaction.feePayer = publicKey;
-        
-        // Sign and send metadata transaction
-        const signTransaction = wallet.signTransaction || wallet.adapter?.signTransaction;
-        if (!signTransaction) {
-          throw new Error('Wallet signing method not available for metadata transaction');
+        const { data, error } = await supabase.functions.invoke('create-metadata', {
+          body: {
+            mintAddress: result.mintAddress,
+            tokenName: metadata.name,
+            tokenSymbol: metadata.symbol,
+            metadataUri: metadataUri,
+          },
+        });
+
+        if (error) {
+          throw new Error(`Supabase function error: ${error.message}`);
         }
 
-        const signedMetadataTransaction = await signTransaction(metadataResult.transaction);
-        const metadataSignature = await this.connection.sendRawTransaction(
-          signedMetadataTransaction.serialize(),
-          { 
-            skipPreflight: true, // Skip preflight to avoid simulation errors with new metadata accounts
-            preflightCommitment: 'confirmed',
-            maxRetries: 3
-          }
-        );
+        console.log('Supabase function returned:', data);
+        result.metadataUri = metadataUri; // Attach the URI for display purposes
         
-        console.log(`Metadata transaction sent: ${metadataSignature}`);
-        
-        // Confirm metadata transaction
-        const confirmation = await this.connection.confirmTransaction({
-          signature: metadataSignature,
-          blockhash,
-          lastValidBlockHeight
-        }, 'confirmed');
-
-        if (confirmation.value.err) {
-          console.error('Metadata transaction confirmation failed:', confirmation.value.err);
-          throw new Error(`Metadata transaction failed: ${JSON.stringify(confirmation.value.err)}`);
-        }
-        
-        console.log('Metadata transaction confirmed successfully');
-        
-        result.metadataUri = metadataResult.metadataUri;
-        console.log('Metadata added successfully:', metadataResult.metadataUri);
       } catch (error) {
-        console.error('Metadata upload failed, but token was created:', error);
-        // Do not re-throw error, allow token creation to be reported as success
+        console.error('On-chain metadata creation failed:', error);
+        // Do not re-throw error, as the token minting was successful.
       }
     }
     

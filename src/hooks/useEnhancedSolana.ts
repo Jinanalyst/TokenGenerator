@@ -1,34 +1,40 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { EnhancedSolanaService } from '../services/enhancedSolanaService';
 import { TokenMetadata } from '../services/solanaService';
 import { Keypair } from '@solana/web3.js';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 
-export const useEnhancedSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
+export const useEnhancedSolana = () => {
   const wallet = useWallet();
-  const [service, setService] = useState<EnhancedSolanaService>(
-    new EnhancedSolanaService(network, wallet)
-  );
+  const { connection } = useConnection();
+
+  const service = useMemo(() => {
+    if (!connection) return null;
+    
+    return new EnhancedSolanaService(
+      connection.rpcEndpoint.includes('devnet') ? 'devnet' : 'mainnet', 
+      connection
+    );
+  }, [connection]);
+
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const newService = new EnhancedSolanaService(network, wallet);
-    setService(newService);
-    if (wallet.connected) {
-      newService.setWallet(wallet);
-      checkConnection(newService);
+    if (wallet.connected && service) {
+      checkConnection(service);
     } else {
       setIsConnected(false);
     }
-  }, [network, wallet, wallet.connected]);
+  }, [wallet.connected, service]);
 
   const checkConnection = async (solanaService: EnhancedSolanaService) => {
     setIsLoading(true);
     setError(null);
     
     try {
+      const network = solanaService.network;
       console.log(`Connecting to ${network}...`);
       const connected = await solanaService.checkConnection();
       setIsConnected(connected);
@@ -42,7 +48,7 @@ export const useEnhancedSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Connection failed';
-      const fullError = `${network} connection failed: ${errorMessage}`;
+      const fullError = `Connection failed: ${errorMessage}`;
       setError(fullError);
       setIsConnected(false);
       console.error(fullError);
@@ -51,7 +57,7 @@ export const useEnhancedSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
     }
   };
 
-  const createToken = async (metadata: TokenMetadata, wallet?: any) => {
+  const createToken = async (metadata: TokenMetadata) => {
     setIsLoading(true);
     setError(null);
 
@@ -60,16 +66,16 @@ export const useEnhancedSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
         throw new Error('Wallet not properly connected');
       }
 
-      console.log(`Creating token on ${network}...`);
+      console.log(`Creating token on ${service.network}...`);
       
       const result = await service.createTokenWithRetry(wallet, metadata);
       
-      console.log(`Token created successfully on ${network}:`, result);
+      console.log(`Token created successfully on ${service.network}:`, result);
       return result;
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Token creation failed';
-      console.error(`${network} token creation failed:`, err);
+      console.error(`${service.network} token creation failed:`, err);
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
@@ -77,7 +83,7 @@ export const useEnhancedSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
     }
   };
 
-  const testTransaction = async (metadata: TokenMetadata, wallet?: any) => {
+  const testTransaction = async (metadata: TokenMetadata) => {
     if (!wallet) {
       throw new Error('Wallet required for transaction testing');
     }
@@ -92,21 +98,14 @@ export const useEnhancedSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
     }
   };
 
-  const switchNetwork = (newNetwork: 'mainnet' | 'devnet') => {
-    const newService = new EnhancedSolanaService(newNetwork);
-    setService(newService);
-    checkConnection(newService);
-  };
-
   return {
     service,
     isConnected,
     isLoading,
     error,
-    network,
+    network: service?.network ?? 'devnet',
     createToken,
     testTransaction,
-    switchNetwork,
     checkConnection: () => checkConnection(service),
     getTokenCreationFee: () => EnhancedSolanaService.getTokenCreationFee()
   };

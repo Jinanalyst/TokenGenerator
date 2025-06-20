@@ -3,9 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Send, Bot, User, Sparkles } from 'lucide-react';
-import AIAgent from './AIAgent';
 import TokenCreationPanel from './TokenCreationPanel';
 import WalletSelector from './WalletSelector';
+import { supabase } from '../integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface Message {
   id: string;
@@ -15,12 +16,55 @@ interface Message {
   tokenData?: any;
 }
 
+// Helper functions for local AI mock
+const extractTokenName = (text: string): string | null => {
+  // Case: "create a [name] token"
+  let nameMatch = text.match(/create\s(?:a|an|the)?\s*(.+?)\s+token/i);
+  if (nameMatch && nameMatch[1]) return nameMatch[1].trim();
+
+  // Case: "token called [name]"
+  nameMatch = text.match(/token\s+called\s+['"]?([^'"]+?)['"]?(?:\s+\(|$|\s+and)/i);
+  if (nameMatch && nameMatch[1]) return nameMatch[1].trim();
+
+  return null;
+};
+
+const extractTokenSymbol = (text: string): string | null => {
+  // Case: (SYMBOL)
+  let symbolMatch = text.match(/\((.+?)\)/i);
+  if (symbolMatch && symbolMatch[1]) return symbolMatch[1].toUpperCase().trim();
+
+  // Case: "... called SYMBOL" where SYMBOL is all caps
+  symbolMatch = text.match(/called\s+([A-Z]{2,10})\b/);
+  if (symbolMatch && symbolMatch[1]) return symbolMatch[1].toUpperCase();
+
+  return null;
+};
+
+const extractTokenSupply = (text: string): number | null => {
+  const millionMatch = text.match(/(\d+(?:\.\d+)?)\s*million/i);
+  if (millionMatch) return Math.floor(parseFloat(millionMatch[1]) * 1000000);
+  
+  const billionMatch = text.match(/(\d+(?:\.\d+)?)\s*billion/i);
+  if (billionMatch) return Math.floor(parseFloat(billionMatch[1]) * 1000000000);
+  
+  const supplyMatch = text.match(/(\d[\d,]*)\s*(?:tokens?|supply)/i);
+  return supplyMatch ? parseInt(supplyMatch[1].replace(/,/g, '')) : null;
+};
+
+const extractNetwork = (text: string): 'mainnet' | 'devnet' | null => {
+  const input = text.toLowerCase();
+  if (input.includes('mainnet')) return 'mainnet';
+  if (input.includes('devnet')) return 'devnet';
+  return null;
+};
+
 const ChatInterface = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       type: 'ai',
-      content: "Hey there! 👋 I'm your Solana Token Generator AI assistant. I can help you create real tokens on both Solana mainnet and devnet with advanced features like authority controls. Connect your wallet and let's create something amazing!\n\nYou can tell me:\n• Token name and symbol\n• Supply amount (e.g., '1 million tokens')\n• Authority settings\n• Network preference (mainnet/devnet)",
+      content: "Hey there! 👋 I'm your Solana Token Generator AI assistant. Just describe the token you want to create, and I'll configure it for you.",
       timestamp: new Date(),
     }
   ]);
@@ -37,187 +81,83 @@ const ChatInterface = () => {
     revokeUpdateAuthority: false,
     image: ''
   });
-  const [wallet, setWallet] = useState(null);
-  const [shouldShowPanel, setShouldShowPanel] = useState(false);
+  const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const [shouldShowPanel, setShouldShowPanel] = useState(false);
 
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleTokenDataChange = (newTokenData: any) => {
     setCurrentTokenData(newTokenData);
   };
 
-  const extractTokenName = (text: string) => {
-    const nameMatch = text.match(/(?:name[:\s]+|called\s+|create\s+)([A-Za-z\s]+?)(?:\s+with|\s+symbol|\s*$)/i);
-    return nameMatch ? nameMatch[1].trim() : null;
-  };
+  const getAIResponse = async (userInput: string) => {
+    setIsTyping(true);
 
-  const extractTokenSymbol = (text: string) => {
-    const symbolMatch = text.match(/(?:symbol[:\s]+|ticker[:\s]+)([A-Z]{2,10})/i) || 
-                       text.match(/\bsymbol\s+([A-Z]{2,10})\b/i) ||
-                       text.match(/\b([A-Z]{2,10})\b(?=\s+and|\s+with|\s*$)/);
-    return symbolMatch ? symbolMatch[1].toUpperCase() : null;
-  };
+    // For local development, mock the AI response to avoid needing a deployed function.
+    if (import.meta.env.DEV) {
+      const extractedSymbol = extractTokenSymbol(userInput);
+      const extractedName = extractTokenName(userInput) || (extractedSymbol ? currentTokenData.name : null);
+      const extractedSupply = extractTokenSupply(userInput);
+      const extractedNetwork = extractNetwork(userInput);
 
-  const extractTokenSupply = (text: string) => {
-    // Handle "million", "billion" etc.
-    const millionMatch = text.match(/(\d+(?:\.\d+)?)\s*million/i);
-    if (millionMatch) return Math.floor(parseFloat(millionMatch[1]) * 1000000);
-    
-    const billionMatch = text.match(/(\d+(?:\.\d+)?)\s*billion/i);
-    if (billionMatch) return Math.floor(parseFloat(billionMatch[1]) * 1000000000);
-    
-    // Handle regular numbers
-    const supplyMatch = text.match(/(\d+(?:,\d+)*)\s*(?:tokens?|supply)/i) || 
-                       text.match(/supply[:\s]*(\d+(?:,\d+)*)/i) ||
-                       text.match(/(\d+(?:,\d+)*)\s+tokens?/i);
-    return supplyMatch ? parseInt(supplyMatch[1].replace(/,/g, '')) : null;
-  };
-
-  const extractNetwork = (text: string) => {
-    const input = text.toLowerCase();
-    if (input.includes('mainnet')) return 'mainnet';
-    if (input.includes('devnet')) return 'devnet';
-    return null;
-  };
-
-  const generateAIResponse = (userInput: string) => {
-    const input = userInput.toLowerCase();
-
-    // Check if this is a token-related conversation that should show the panel
-    const tokenRelatedKeywords = ['token', 'create', 'supply', 'symbol', 'name', 'mint', 'authority', 'mainnet', 'devnet', 'launch', 'deploy'];
-    const isTokenRelated = tokenRelatedKeywords.some(keyword => input.includes(keyword));
-
-    // Extract token details from user input
-    const extractedName = extractTokenName(userInput);
-    const extractedSymbol = extractTokenSymbol(userInput);
-    const extractedSupply = extractTokenSupply(userInput);
-    const extractedNetwork = extractNetwork(userInput);
-
-    // Create updated token data if we extracted any details
-    let updatedTokenData = null;
-    if (extractedName || extractedSymbol || extractedSupply || extractedNetwork) {
-      updatedTokenData = {
+      const updatedTokenData = {
         ...currentTokenData,
         name: extractedName || currentTokenData.name,
         symbol: extractedSymbol || currentTokenData.symbol,
         supply: extractedSupply || currentTokenData.supply,
         network: extractedNetwork || currentTokenData.network,
-        decimals: 9,
-        revokeMintAuthority: currentTokenData.revokeMintAuthority,
-        revokeFreezeAuthority: currentTokenData.revokeFreezeAuthority,
-        revokeUpdateAuthority: currentTokenData.revokeUpdateAuthority,
-        image: currentTokenData.image
       };
-    }
 
-    if (input.includes('wallet') && !wallet) {
-      return {
-        content: "I see you're asking about wallet connection! Please use the wallet connection panel above to connect your Phantom wallet. Once connected, you'll be able to create real Solana tokens with all the advanced features.",
-        tokenData: updatedTokenData,
-        showPanel: isTokenRelated
-      };
-    }
-
-    // Enhanced supply handling
-    if (input.includes('supply') || input.includes('million') || input.includes('billion') || /\d+/.test(input)) {
-      const supplyAmount = extractTokenSupply(userInput);
-      if (supplyAmount || updatedTokenData) {
-        const finalTokenData = updatedTokenData || {
-          ...currentTokenData,
-          supply: supplyAmount || currentTokenData.supply
-        };
-
-        return {
-          content: `Perfect! I've updated your token details:\n\n🪙 **Current Token Details:**\n• Name: ${finalTokenData.name}\n• Symbol: ${finalTokenData.symbol}\n• Supply: ${finalTokenData.supply.toLocaleString()}\n• Network: ${finalTokenData.network.toUpperCase()}\n\nYou can also set authority controls using the checkboxes below, or just say "create it" to deploy!`,
-          tokenData: finalTokenData,
-          showPanel: true
-        };
+      let content = `I've updated the token details based on your request:\n\n` +
+                    `**Name**: ${updatedTokenData.name}\n` +
+                    `**Symbol**: ${updatedTokenData.symbol}\n` +
+                    `**Supply**: ${updatedTokenData.supply.toLocaleString()}\n` +
+                    `**Network**: ${updatedTokenData.network.toUpperCase()}`;
+      
+      if (!extractedName && !extractedSymbol && !extractedSupply && !extractedNetwork) {
+          content = "I didn't quite catch that. You can ask me to set the token name, symbol, supply, or network. For example: 'Create a token named MyCoin (MC) with 100 million supply on mainnet'."
       }
+
+      // Simulate network delay
+      await new Promise(res => setTimeout(res, 500));
+
+      const isTokenRelated = ['token', 'create', 'supply', 'symbol', 'name', 'mint', 'authority', 'mainnet', 'devnet', 'launch', 'deploy'].some(keyword => userInput.toLowerCase().includes(keyword));
+
+      setIsTyping(false);
+      return { content, tokenData: updatedTokenData, showPanel: isTokenRelated };
     }
 
-    // Check if user is providing comprehensive token details
-    if (extractedName || extractedSymbol || extractedNetwork || (input.includes('create') && (extractedName || extractedSymbol))) {
-      const tokenData = updatedTokenData || {
-        ...currentTokenData,
-        name: extractedName || currentTokenData.name,
-        symbol: extractedSymbol || currentTokenData.symbol,
-        supply: extractedSupply || currentTokenData.supply,
-        network: extractedNetwork || currentTokenData.network
-      };
+    try {
+      // In a real application, this would call a secure backend endpoint
+      // that then calls the AI model with proper API keys.
+      // We are calling a Supabase Edge Function here.
+      const { data, error } = await supabase.functions.invoke('parse-token-prompt', {
+        body: { prompt: userInput, currentTokenData },
+      });
 
+      if (error) {
+        throw error;
+      }
+      
+      return data;
+
+    } catch (error) {
+      console.error("Error fetching AI response:", error);
+      toast({
+        title: "AI Error",
+        description: "Could not get a response from the AI agent. Please try again.",
+        variant: "destructive"
+      });
       return {
-        content: `Great! I've got the details for your token:\n\n🪙 **Name**: ${tokenData.name}\n🏷️ **Symbol**: ${tokenData.symbol}\n📊 **Supply**: ${tokenData.supply.toLocaleString()}\n🌐 **Network**: ${tokenData.network.toUpperCase()}\n\nLooks good? You can adjust the authority settings below or say "create it" to deploy!`,
-        tokenData,
-        showPanel: true
+        content: "I'm having trouble connecting to my brain right now. Please try again in a moment.",
+        tokenData: currentTokenData,
       };
+    } finally {
+      setIsTyping(false);
     }
-
-    if (input.includes('authority') || input.includes('revoke') || input.includes('mint') || input.includes('freeze')) {
-      return {
-        content: "Great question about token authorities! 🔐\n\n**Authority Types:**\n• **Mint Authority**: Can create new tokens - check to revoke this\n• **Freeze Authority**: Can freeze token accounts - check to revoke this  \n• **Update Authority**: Can modify token metadata - check to revoke this\n\n**Why Revoke Authorities?**\n• Increases trust and security\n• Makes tokens more decentralized\n• Cannot be undone once revoked\n\nUse the checkboxes in the panel below to select which authorities to revoke. The green checkmarks will show your selections!",
-        tokenData: updatedTokenData,
-        showPanel: true
-      };
-    }
-
-    if (input.includes('liquidity') || input.includes('pool') || input.includes('raydium')) {
-      return {
-        content: "Awesome! Adding liquidity is crucial for token trading. 💧\n\nAfter creating your token, you can:\n• Create a liquidity pool on Raydium\n• Set the initial price ratio\n• Earn fees from trades\n• Provide better trading experience\n\nI'll show you the liquidity pool creation page once your token is ready!",
-        tokenData: updatedTokenData,
-        showPanel: true
-      };
-    }
-
-    if (input.includes('create') || input.includes('token') || input.includes('generate')) {
-      return {
-        content: "Awesome! I'm ready to help you create a real token. Let me gather some details:\n\n**Tell me:**\n• What should we call your token?\n• What's the symbol (like BTC, ETH)?\n• How many tokens? (e.g., '1 million tokens')\n• Mainnet or devnet?\n• Any authority controls needed?\n\nJust describe what you want naturally!",
-        tokenData: updatedTokenData,
-        showPanel: true
-      };
-    }
-
-    if (input.includes('mainnet') || input.includes('devnet')) {
-      const network = input.includes('mainnet') ? 'mainnet' : 'devnet';
-      const networkTokenData = {
-        ...(updatedTokenData || currentTokenData),
-        network
-      };
-      return {
-        content: `Perfect! I'll set this up for Solana ${network.toUpperCase()}. ${network === 'mainnet' ? '⚠️ Remember mainnet uses real SOL!' : '✅ Devnet is perfect for testing!'}\n\nNow, what else would you like to configure for your token?`,
-        tokenData: networkTokenData,
-        showPanel: true
-      };
-    }
-
-    if (input.includes('create it') || input.includes("let's go") || input.includes('deploy') || input.includes('launch')) {
-      return {
-        content: "🚀 Perfect! Your token configuration is ready for deployment!\n\n✨ **Next Steps:**\n1. Review your token details below\n2. Set authority controls (checkboxes)\n3. Click 'Create Real Token'\n4. Confirm in your wallet\n\n*This creates a real token on the Solana blockchain!*",
-        tokenData: updatedTokenData || currentTokenData,
-        showPanel: true
-      };
-    }
-
-    // Default responses
-    const responses = [
-      "I'm here to help you create real Solana tokens! Try saying something like 'Create a token called MyToken with symbol MT and 5 million supply on mainnet'",
-      "Ready to build on Solana? Tell me your token name, symbol, how many tokens, and whether you want mainnet or devnet!",
-      "Let's create your token with proper authority controls! What's your token idea? Don't forget to specify mainnet or devnet!",
-      "I can help with token creation, supply amounts, authority settings, and network selection. What would you like to know?"
-    ];
-
-    return {
-      content: responses[Math.floor(Math.random() * responses.length)],
-      tokenData: updatedTokenData,
-      showPanel: isTokenRelated
-    };
   };
 
   const handleSendMessage = async () => {
@@ -231,88 +171,50 @@ const ChatInterface = () => {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = inputValue;
     setInputValue('');
-    setIsTyping(true);
+    
+    const aiResponse = await getAIResponse(currentInput);
 
-    // Simulate AI processing
-    setTimeout(() => {
-      const aiResponse = generateAIResponse(inputValue);
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'ai',
-        content: aiResponse.content,
-        timestamp: new Date(),
-        tokenData: aiResponse.tokenData,
-      };
+    const aiMessage: Message = {
+      id: (Date.now() + 1).toString(),
+      type: 'ai',
+      content: aiResponse.content,
+      timestamp: new Date(),
+    };
 
-      setMessages(prev => [...prev, aiMessage]);
-      if (aiResponse.tokenData) {
-        setCurrentTokenData(aiResponse.tokenData);
-      }
-      if (aiResponse.showPanel) {
-        setShouldShowPanel(true);
-      }
-      setIsTyping(false);
-    }, 1500);
+    setMessages(prev => [...prev, aiMessage]);
+    
+    if (aiResponse.tokenData) {
+      setCurrentTokenData(aiResponse.tokenData);
+    }
+    if (aiResponse.showPanel) {
+      setShouldShowPanel(true);
+    }
   };
 
   return (
     <div className="container mx-auto px-4 max-w-4xl">
-      {/* Wallet Connection - Updated to use WalletSelector */}
       <div className="mb-4">
-        <WalletSelector onWalletChange={setWallet} />
+        <WalletSelector />
       </div>
 
       <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 shadow-2xl">
-        {/* Chat Messages */}
-        <div 
-          ref={chatContainerRef}
-          className="h-96 overflow-y-auto p-6 space-y-4 scrollbar-thin scrollbar-thumb-purple-500/30 scrollbar-track-transparent"
-        >
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div className={`flex items-start space-x-3 max-w-xs lg:max-w-md`}>
-                {message.type === 'ai' && (
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-400 to-blue-400 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-4 h-4 text-white" />
-                  </div>
-                )}
-                
-                <div
-                  className={`px-4 py-3 rounded-2xl ${
-                    message.type === 'user'
-                      ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white ml-auto'
-                      : 'bg-white/10 text-white border border-white/20'
-                  }`}
-                >
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {message.content}
-                  </div>
-                  {message.tokenData && (
-                    <div className="mt-3 p-3 bg-black/20 rounded-lg border border-purple-500/30">
-                      <div className="text-xs text-purple-200 mb-2">Token Preview:</div>
-                      <div className="space-y-1 text-sm">
-                        <div>Name: {message.tokenData.name || 'N/A'}</div>
-                        <div>Symbol: {message.tokenData.symbol || 'N/A'}</div>
-                        <div>Supply: {message.tokenData.supply?.toLocaleString() || 'N/A'}</div>
-                        <div>Network: {message.tokenData.network?.toUpperCase() || 'DEVNET'}</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {message.type === 'user' && (
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-green-400 to-blue-400 flex items-center justify-center flex-shrink-0">
-                    <User className="w-4 h-4 text-white" />
-                  </div>
-                )}
+        <div className="h-96 overflow-y-auto p-6 space-y-4">
+          {messages.map((msg) => (
+            <div key={msg.id} className={`flex items-start gap-3 ${msg.type === 'user' ? 'flex-row-reverse' : ''}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.type === 'ai' ? 'bg-gradient-to-r from-purple-400 to-blue-400' : 'bg-gray-700'}`}>
+                {msg.type === 'ai' ? <Bot className="w-5 h-5 text-white" /> : <User className="w-5 h-5 text-white" />}
+              </div>
+              <div className={`p-3 rounded-lg max-w-sm ${
+                msg.type === 'user' 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-white/10 text-purple-100'
+              }`}>
+                <p className="text-sm" style={{whiteSpace: 'pre-wrap'}}>{msg.content}</p>
               </div>
             </div>
           ))}
-
           {isTyping && (
             <div className="flex justify-start">
               <div className="flex items-start space-x-3">
@@ -329,37 +231,28 @@ const ChatInterface = () => {
               </div>
             </div>
           )}
-          
           <div ref={messagesEndRef} />
         </div>
-
-        {/* Input Area */}
         <div className="border-t border-purple-500/30 p-4">
-          <div className="flex space-x-3">
+          <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center space-x-2">
             <Input
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Try: 'Create MyToken with 5 million supply on mainnet' or 'Change to devnet'"
-              className="flex-1 bg-white/10 border-white/20 text-white placeholder-white/60 focus:border-purple-400"
+              placeholder="e.g., 'Create a token named...'"
+              className="bg-white/10 border-white/20 text-white flex-1"
+              disabled={isTyping}
             />
-            <Button
-              onClick={handleSendMessage}
-              disabled={!inputValue.trim() || isTyping}
-              className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white px-6"
-            >
+            <Button type="submit" disabled={isTyping || !inputValue.trim()} className="bg-purple-500 hover:bg-purple-600">
               <Send className="w-4 h-4" />
             </Button>
-          </div>
+          </form>
         </div>
       </Card>
 
-      {/* Token Creation Panel - Show when shouldShowPanel is true */}
       {shouldShowPanel && (
         <div className="mt-6">
           <TokenCreationPanel 
             tokenData={currentTokenData} 
-            wallet={wallet}
             onTokenDataChange={handleTokenDataChange}
           />
         </div>
