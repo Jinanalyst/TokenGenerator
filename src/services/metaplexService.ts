@@ -1,4 +1,3 @@
-
 import { 
   Connection, 
   PublicKey, 
@@ -64,21 +63,138 @@ export class MetaplexService {
   ): Promise<Transaction> {
     console.log('Creating token metadata transaction...');
     
-    // For now, let's create a simple transaction that we can extend later
-    // This is a fallback approach since the Metaplex imports are unstable
-    const transaction = new Transaction();
+    const metadataAddress = MetaplexService.getMetadataAddress(mintPublicKey);
     
-    // Add a comment instruction to indicate this is a metadata transaction
-    // In a real implementation, we would need to use the correct Metaplex instruction
-    console.log('Metadata transaction created (simplified version)');
+    // Create the metadata instruction data
+    const data = {
+      name: metadata.name,
+      symbol: metadata.symbol,
+      uri: metadata.uri,
+      sellerFeeBasisPoints: metadata.sellerFeeBasisPoints,
+      creators: metadata.creators || null,
+      collection: metadata.collection || null,
+      uses: metadata.uses || null,
+    };
+
+    // Create the instruction accounts
+    const accounts: CreateMetadataAccountV3InstructionAccounts = {
+      metadata: metadataAddress,
+      mint: mintPublicKey,
+      mintAuthority: payerPublicKey,
+      payer: payerPublicKey,
+      updateAuthority: payerPublicKey,
+    };
+
+    // Create the instruction args
+    const args: CreateMetadataAccountV3InstructionArgs = {
+      createMetadataAccountArgsV3: {
+        data,
+        isMutable: true,
+        collectionDetails: null,
+      },
+    };
+
+    // Create the instruction
+    const instruction = {
+      programId: TOKEN_METADATA_PROGRAM_ID,
+      keys: [
+        { pubkey: accounts.metadata, isSigner: false, isWritable: true },
+        { pubkey: accounts.mint, isSigner: false, isWritable: false },
+        { pubkey: accounts.mintAuthority, isSigner: true, isWritable: false },
+        { pubkey: accounts.payer, isSigner: true, isWritable: true },
+        { pubkey: accounts.updateAuthority, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      ],
+      data: Buffer.from([
+        0, // CreateMetadataAccountV3 instruction
+        ...this.serializeCreateMetadataAccountV3Args(args.createMetadataAccountArgsV3),
+      ]),
+    };
+
+    const transaction = new Transaction();
+    transaction.add(instruction);
+    
+    console.log('Metadata transaction created successfully');
     console.log('Token details:', {
       name: metadata.name,
       symbol: metadata.symbol,
       uri: metadata.uri,
-      mint: mintPublicKey.toString()
+      mint: mintPublicKey.toString(),
+      metadataAddress: metadataAddress.toString()
     });
     
     return transaction;
+  }
+
+  private serializeCreateMetadataAccountV3Args(args: any): Buffer {
+    // Simple serialization for the metadata args
+    const buffers: Buffer[] = [];
+    
+    // Serialize name (string)
+    const nameBuffer = Buffer.from(args.data.name, 'utf8');
+    buffers.push(Buffer.from([nameBuffer.length]));
+    buffers.push(nameBuffer);
+    
+    // Serialize symbol (string)
+    const symbolBuffer = Buffer.from(args.data.symbol, 'utf8');
+    buffers.push(Buffer.from([symbolBuffer.length]));
+    buffers.push(symbolBuffer);
+    
+    // Serialize URI (string)
+    const uriBuffer = Buffer.from(args.data.uri, 'utf8');
+    buffers.push(Buffer.from([uriBuffer.length]));
+    buffers.push(uriBuffer);
+    
+    // Serialize seller fee basis points (u16)
+    const feeBuffer = Buffer.alloc(2);
+    feeBuffer.writeUInt16LE(args.data.sellerFeeBasisPoints, 0);
+    buffers.push(feeBuffer);
+    
+    // Serialize creators (optional array)
+    if (args.data.creators) {
+      buffers.push(Buffer.from([1])); // Has creators
+      buffers.push(Buffer.from([args.data.creators.length])); // Array length
+      for (const creator of args.data.creators) {
+        buffers.push(creator.address.toBuffer());
+        buffers.push(Buffer.from([creator.verified ? 1 : 0]));
+        buffers.push(Buffer.from([creator.share]));
+      }
+    } else {
+      buffers.push(Buffer.from([0])); // No creators
+    }
+    
+    // Serialize collection (optional)
+    if (args.data.collection) {
+      buffers.push(Buffer.from([1])); // Has collection
+      buffers.push(Buffer.from([args.data.collection.verified ? 1 : 0]));
+      buffers.push(args.data.collection.key.toBuffer());
+    } else {
+      buffers.push(Buffer.from([0])); // No collection
+    }
+    
+    // Serialize uses (optional)
+    if (args.data.uses) {
+      buffers.push(Buffer.from([1])); // Has uses
+      buffers.push(Buffer.from([args.data.uses.useMethod]));
+      buffers.push(Buffer.alloc(8).writeBigUInt64LE(BigInt(args.data.uses.remaining), 0));
+      buffers.push(Buffer.alloc(8).writeBigUInt64LE(BigInt(args.data.uses.total), 0));
+    } else {
+      buffers.push(Buffer.from([0])); // No uses
+    }
+    
+    // Serialize isMutable (bool)
+    buffers.push(Buffer.from([args.isMutable ? 1 : 0]));
+    
+    // Serialize collectionDetails (optional)
+    if (args.collectionDetails) {
+      buffers.push(Buffer.from([1])); // Has collection details
+      // Add collection details serialization here if needed
+    } else {
+      buffers.push(Buffer.from([0])); // No collection details
+    }
+    
+    return Buffer.concat(buffers);
   }
 
   async uploadAndCreateMetadata(

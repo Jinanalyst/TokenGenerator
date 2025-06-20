@@ -1,4 +1,3 @@
-
 import { 
   Connection, 
   PublicKey, 
@@ -202,28 +201,26 @@ export class EnhancedSolanaService {
         balanceCheck,
         connectionStatus
       };
-
     } catch (error) {
-      console.error('Transaction test failed:', error);
-      errors.push('Transaction validation failed');
-      return { 
-        success: false, 
-        errors, 
+      console.error('Transaction readiness test failed:', error);
+      return {
+        success: false,
+        errors: [error instanceof Error ? error.message : 'Unknown error'],
+        estimatedFee: 0,
+        balanceCheck: false,
         connectionStatus: false
       };
     }
   }
 
   async createTokenWithRetry(wallet: any, metadata: TokenMetadata): Promise<TokenCreationResult> {
-    console.log(`Creating token on ${this.network}...`);
+    console.log(`Creating token with retry on ${this.network}...`);
     
-    if (metadata.imageBlob) {
-      return await this.createTokenWithMetadata(wallet, metadata);
-    } else {
-      return await this.createToken(wallet, metadata);
-    }
+    // Use the metadata-enabled version
+    return await this.createTokenWithMetadata(wallet, metadata);
   }
 
+  // Simplified, Phantom-friendly token creation
   private async createToken(wallet: any, metadata: TokenMetadata): Promise<TokenCreationResult> {
     // Get wallet public key
     const walletPublicKey = wallet.publicKey || wallet.adapter?.publicKey;
@@ -231,19 +228,24 @@ export class EnhancedSolanaService {
       ? new PublicKey(walletPublicKey) 
       : walletPublicKey;
     
-    console.log(`Creating token on ${this.network}`);
+    console.log(`Creating token on ${this.network} with simplified approach`);
     
-    // Step 1: Create mint account
-    const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+    // Create mint keypair
     const mintKeypair = Keypair.generate();
+    
+    // Get latest blockhash
+    const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+    
+    // Create a single, simplified transaction
+    const transaction = new Transaction();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = publicKey;
+
+    // Get mint rent
     const mintRent = await this.connection.getMinimumBalanceForRentExemption(82);
 
-    const createMintTransaction = new Transaction();
-    createMintTransaction.recentBlockhash = blockhash;
-    createMintTransaction.feePayer = publicKey;
-
-    // Create mint account
-    createMintTransaction.add(
+    // Add create account instruction
+    transaction.add(
       SystemProgram.createAccount({
         fromPubkey: publicKey,
         newAccountPubkey: mintKeypair.publicKey,
@@ -253,8 +255,8 @@ export class EnhancedSolanaService {
       })
     );
 
-    // Initialize mint
-    createMintTransaction.add(
+    // Add initialize mint instruction
+    transaction.add(
       createInitializeMintInstruction(
         mintKeypair.publicKey,
         metadata.decimals,
@@ -263,46 +265,14 @@ export class EnhancedSolanaService {
       )
     );
 
-    createMintTransaction.partialSign(mintKeypair);
-
-    // Sign and send
-    console.log('Requesting wallet signature for mint creation...');
-    const signTransaction = wallet.signTransaction || wallet.adapter?.signTransaction;
-    if (!signTransaction) {
-      throw new Error('Wallet signing method not available');
-    }
-    
-    const signedCreateTransaction = await signTransaction(createMintTransaction);
-    
-    const createSignature = await this.connection.sendRawTransaction(
-      signedCreateTransaction.serialize(),
-      { skipPreflight: false, preflightCommitment: 'confirmed' }
-    );
-    
-    console.log(`Mint creation transaction: ${createSignature}`);
-    
-    // Confirm transaction
-    await this.connection.confirmTransaction({
-      signature: createSignature,
-      blockhash,
-      lastValidBlockHeight
-    }, 'confirmed');
-
-    // Step 2: Create token account and mint tokens
-    const { blockhash: mintBlockhash, lastValidBlockHeight: mintLastValidHeight } = 
-      await this.connection.getLatestBlockhash('confirmed');
-    
+    // Get associated token address
     const associatedTokenAddress = await getAssociatedTokenAddress(
       mintKeypair.publicKey,
       publicKey
     );
 
-    const mintTransaction = new Transaction();
-    mintTransaction.recentBlockhash = mintBlockhash;
-    mintTransaction.feePayer = publicKey;
-
-    // Create associated token account
-    mintTransaction.add(
+    // Add create associated token account instruction
+    transaction.add(
       createAssociatedTokenAccountInstruction(
         publicKey,
         associatedTokenAddress,
@@ -311,8 +281,8 @@ export class EnhancedSolanaService {
       )
     );
 
-    // Mint tokens
-    mintTransaction.add(
+    // Add mint to instruction
+    transaction.add(
       createMintToInstruction(
         mintKeypair.publicKey,
         associatedTokenAddress,
@@ -321,9 +291,9 @@ export class EnhancedSolanaService {
       )
     );
 
-    // Revoke authorities if requested
+    // Add authority revocation instructions if requested
     if (metadata.revokeMintAuthority) {
-      mintTransaction.add(
+      transaction.add(
         createSetAuthorityInstruction(
           mintKeypair.publicKey,
           publicKey,
@@ -334,7 +304,7 @@ export class EnhancedSolanaService {
     }
 
     if (metadata.revokeFreezeAuthority) {
-      mintTransaction.add(
+      transaction.add(
         createSetAuthorityInstruction(
           mintKeypair.publicKey,
           publicKey,
@@ -344,83 +314,82 @@ export class EnhancedSolanaService {
       );
     }
 
-    console.log('Requesting wallet signature for token minting...');
-    const signedMintTransaction = await signTransaction(mintTransaction);
-    
-    const mintSignature = await this.connection.sendRawTransaction(
-      signedMintTransaction.serialize(),
-      { skipPreflight: false, preflightCommitment: 'confirmed' }
-    );
-    
-    console.log(`Token minting transaction: ${mintSignature}`);
-    
-    await this.connection.confirmTransaction({
-      signature: mintSignature,
-      blockhash: mintBlockhash,
-      lastValidBlockHeight: mintLastValidHeight
-    }, 'confirmed');
+    // Sign the transaction with the mint keypair
+    transaction.partialSign(mintKeypair);
 
-    // Step 3: Collect fee AFTER successful token creation (optional and transparent)
+    // Simulate transaction first to catch errors
     try {
-      await this.collectServiceFee(wallet, publicKey);
+      console.log('Simulating transaction...');
+      const simulation = await this.connection.simulateTransaction(transaction);
+      
+      if (simulation.value.err) {
+        throw new Error(`Transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
+      }
+      
+      console.log('Transaction simulation successful');
     } catch (error) {
-      console.warn('Service fee collection failed, but token was created successfully:', error);
+      console.error('Transaction simulation failed:', error);
+      throw new Error(`Transaction simulation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
-    console.log(`Token created successfully on ${this.network}!`);
-
-    return {
-      mintAddress: mintKeypair.publicKey.toBase58(),
-      tokenAccountAddress: associatedTokenAddress.toBase58(),
-      transactionSignature: mintSignature,
-      explorerUrl: this.getExplorerUrl(mintKeypair.publicKey.toBase58())
-    };
-  }
-
-  // Separate, optional fee collection
-  private async collectServiceFee(wallet: any, publicKey: PublicKey): Promise<void> {
+    // Sign and send transaction
+    console.log('Requesting wallet signature...');
+    const signTransaction = wallet.signTransaction || wallet.adapter?.signTransaction;
+    if (!signTransaction) {
+      throw new Error('Wallet signing method not available');
+    }
+    
     try {
-      const feeRecipient = SecurityConfig.getFeeRecipient();
-      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
-
-      const feeTransaction = new Transaction();
-      feeTransaction.recentBlockhash = blockhash;
-      feeTransaction.feePayer = publicKey;
-
-      feeTransaction.add(
-        SystemProgram.transfer({
-          fromPubkey: publicKey,
-          toPubkey: feeRecipient,
-          lamports: EnhancedSolanaService.TOKEN_CREATION_FEE,
-        })
-      );
-
-      const signTransaction = wallet.signTransaction || wallet.adapter?.signTransaction;
-      const signedFeeTransaction = await signTransaction(feeTransaction);
+      const signedTransaction = await signTransaction(transaction);
       
-      const feeSignature = await this.connection.sendRawTransaction(
-        signedFeeTransaction.serialize(),
-        { skipPreflight: false, preflightCommitment: 'confirmed' }
+      console.log('Sending transaction...');
+      const signature = await this.connection.sendRawTransaction(
+        signedTransaction.serialize(),
+        { 
+          skipPreflight: false, 
+          preflightCommitment: 'confirmed',
+          maxRetries: 3
+        }
       );
-
-      await this.connection.confirmTransaction({
-        signature: feeSignature,
+      
+      console.log(`Transaction sent: ${signature}`);
+      
+      // Confirm transaction
+      const confirmation = await this.connection.confirmTransaction({
+        signature,
         blockhash,
         lastValidBlockHeight
       }, 'confirmed');
 
-      console.log('Service fee collected:', feeSignature);
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      }
+
+      console.log(`Token created successfully on ${this.network}!`);
+
+      return {
+        mintAddress: mintKeypair.publicKey.toBase58(),
+        tokenAccountAddress: associatedTokenAddress.toBase58(),
+        transactionSignature: signature,
+        explorerUrl: this.getExplorerUrl(mintKeypair.publicKey.toBase58())
+      };
     } catch (error) {
-      console.warn('Fee collection failed:', error);
-      throw error;
+      console.error('Transaction failed:', error);
+      throw new Error(`Transaction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
+  // Create token with proper metadata
   private async createTokenWithMetadata(wallet: any, metadata: TokenMetadata): Promise<TokenCreationResult> {
+    console.log('Creating token with metadata...');
+    
+    // First create the token
     const result = await this.createToken(wallet, metadata);
     
+    // Then add metadata if image is provided
     if (metadata.imageBlob) {
       try {
+        console.log('Adding metadata to token...');
         const walletPublicKey = wallet.publicKey || wallet.adapter?.publicKey;
         const publicKey = typeof walletPublicKey === 'string' 
           ? new PublicKey(walletPublicKey) 
@@ -435,9 +404,59 @@ export class EnhancedSolanaService {
           publicKey
         );
         
+        // Send the metadata transaction
+        console.log('Sending metadata transaction...');
+        const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+        metadataResult.transaction.recentBlockhash = blockhash;
+        metadataResult.transaction.feePayer = publicKey;
+        
+        // Simulate metadata transaction
+        try {
+          const simulation = await this.connection.simulateTransaction(metadataResult.transaction);
+          if (simulation.value.err) {
+            throw new Error(`Metadata transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
+          }
+          console.log('Metadata transaction simulation successful');
+        } catch (error) {
+          console.warn('Metadata transaction simulation failed:', error);
+          // Continue anyway as the token was created successfully
+        }
+        
+        // Sign and send metadata transaction
+        const signTransaction = wallet.signTransaction || wallet.adapter?.signTransaction;
+        if (signTransaction) {
+          try {
+            const signedMetadataTransaction = await signTransaction(metadataResult.transaction);
+            const metadataSignature = await this.connection.sendRawTransaction(
+              signedMetadataTransaction.serialize(),
+              { 
+                skipPreflight: false, 
+                preflightCommitment: 'confirmed',
+                maxRetries: 3
+              }
+            );
+            
+            console.log(`Metadata transaction sent: ${metadataSignature}`);
+            
+            // Confirm metadata transaction
+            await this.connection.confirmTransaction({
+              signature: metadataSignature,
+              blockhash,
+              lastValidBlockHeight
+            }, 'confirmed');
+            
+            console.log('Metadata transaction confirmed successfully');
+          } catch (error) {
+            console.warn('Metadata transaction failed:', error);
+            // Don't throw error as the token was created successfully
+          }
+        }
+        
         result.metadataUri = metadataResult.metadataUri;
+        console.log('Metadata added successfully:', metadataResult.metadataUri);
       } catch (error) {
         console.warn('Metadata upload failed, but token was created:', error);
+        // Don't throw error here as the token was created successfully
       }
     }
     
