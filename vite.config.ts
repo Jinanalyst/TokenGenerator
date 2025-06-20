@@ -18,12 +18,35 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "stream": "stream-browserify",
+      "http": "http-browserify",
+      "url": "url",
     },
   },
   define: {
     global: 'globalThis',
+    process: {
+      env: {},
+    },
   },
   optimizeDeps: {
-    include: ['buffer'],
+    include: [
+      'buffer', 
+      'stream-browserify', 
+      'http-browserify', 
+      'url',
+      '@metaplex-foundation/umi-bundle-defaults',
+      '@metaplex-foundation/mpl-token-metadata'
+    ],
+  },
+  build: {
+    rollupOptions: {
+      external: [],
+      output: {
+        globals: {
+          buffer: 'Buffer',
+        },
+      },
+    },
   },
 }));
