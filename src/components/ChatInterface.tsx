@@ -191,8 +191,12 @@ const ChatInterface = () => {
     if (aiResponse.tokenData) {
       setCurrentTokenData(aiResponse.tokenData);
     }
-    if (aiResponse.showPanel) {
-      console.log("Setting shouldShowPanel to true", aiResponse);
+
+    // Show the panel if the AI response is not the default fallback message
+    if (
+      aiResponse.content &&
+      !aiResponse.content.includes("I didn't quite catch that")
+    ) {
       setShouldShowPanel(true);
     }
   };
