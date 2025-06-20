@@ -1,4 +1,3 @@
-
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { IPFSService } from './ipfsService';
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
@@ -46,21 +45,18 @@ export class MetaplexService {
   ): Promise<{ metadataUri: string; success: boolean; error?: string }> {
     try {
       console.log('Starting metadata creation process...');
-      
-      // Step 1: Upload image to IPFS
-      console.log('Uploading image to IPFS...');
-      const imageUrl = await IPFSService.uploadImageToIPFS(imageFile, `${tokenSymbol.toLowerCase()}_logo.png`);
-      console.log('Image uploaded:', imageUrl);
-
-      // Step 2: Create and upload metadata
-      console.log('Creating token metadata...');
-      const tokenMetadata = await IPFSService.createTokenMetadata(tokenName, tokenSymbol, description, imageUrl);
-      console.log('Uploading metadata to IPFS...');
-      const metadataUri = await IPFSService.uploadMetadataToIPFS(tokenMetadata);
+      // Convert Blob to File if necessary
+      let imageFileToUpload: File;
+      if (imageFile instanceof File) {
+        imageFileToUpload = imageFile;
+      } else {
+        imageFileToUpload = new File([imageFile], `${tokenSymbol.toLowerCase()}_logo.png`, { type: imageFile.type || 'image/png' });
+      }
+      const metadataUri = await IPFSService.uploadTokenData(tokenName, tokenSymbol, description, imageFileToUpload);
       console.log('Metadata uploaded:', metadataUri);
 
       // Validate the metadata URI
-      if (!IPFSService.validateIPFSUrl(metadataUri) && !metadataUri.startsWith('blob:')) {
+      if (!metadataUri || (!metadataUri.startsWith('http://') && !metadataUri.startsWith('https://'))) {
         throw new Error('Invalid metadata URI generated');
       }
 

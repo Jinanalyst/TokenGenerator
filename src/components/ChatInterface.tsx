@@ -60,6 +60,7 @@ const extractNetwork = (text: string): 'mainnet' | 'devnet' | null => {
 };
 
 const ChatInterface = () => {
+  const [showTokenPanel, setShowTokenPanel] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -199,64 +200,80 @@ const ChatInterface = () => {
         <WalletSelector />
       </div>
 
-      <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 shadow-2xl">
-        <div className="h-96 overflow-y-auto p-6 space-y-4">
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex items-start gap-3 ${msg.type === 'user' ? 'flex-row-reverse' : ''}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.type === 'ai' ? 'bg-gradient-to-r from-purple-400 to-blue-400' : 'bg-gray-700'}`}>
-                {msg.type === 'ai' ? <Bot className="w-5 h-5 text-white" /> : <User className="w-5 h-5 text-white" />}
-              </div>
-              <div className={`p-3 rounded-lg max-w-sm ${
-                msg.type === 'user' 
-                ? 'bg-blue-600 text-white' 
-                : 'bg-white/10 text-purple-100'
-              }`}>
-                <p className="text-sm" style={{whiteSpace: 'pre-wrap'}}>{msg.content}</p>
-              </div>
-            </div>
-          ))}
-          {isTyping && (
-            <div className="flex justify-start">
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-400 to-blue-400 flex items-center justify-center">
-                  <Bot className="w-4 h-4 text-white" />
-                </div>
-                <div className="bg-white/10 text-white border border-white/20 px-4 py-3 rounded-2xl">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce delay-100"></div>
-                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce delay-200"></div>
+      <div className="mb-4">
+        <Card className="bg-black/20 backdrop-blur-lg border-purple-500/30 p-6 min-h-[400px]">
+          <div className="space-y-4">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`rounded-lg px-4 py-2 max-w-[80%] ${
+                    msg.type === 'user'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-purple-700/80 text-white'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2 mb-1">
+                    {msg.type === 'ai' ? (
+                      <Bot className="w-4 h-4 text-purple-200" />
+                    ) : (
+                      <User className="w-4 h-4 text-blue-200" />
+                    )}
+                    <span className="text-xs text-gray-300">
+                      {msg.type === 'ai' ? 'AI' : 'You'}
+                    </span>
                   </div>
+                  <div className="whitespace-pre-line">{msg.content}</div>
                 </div>
               </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-        <div className="border-t border-purple-500/30 p-4">
-          <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center space-x-2">
-            <Input
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="e.g., 'Create a token named...'"
-              className="bg-white/10 border-white/20 text-white flex-1"
-              disabled={isTyping}
-            />
-            <Button type="submit" disabled={isTyping || !inputValue.trim()} className="bg-purple-500 hover:bg-purple-600">
-              <Send className="w-4 h-4" />
-            </Button>
-          </form>
-        </div>
-      </Card>
+            ))}
+            {isTyping && (
+              <div className="flex justify-start">
+                <div className="rounded-lg px-4 py-2 bg-purple-700/80 text-white max-w-[80%] flex items-center space-x-2">
+                  <Sparkles className="w-4 h-4 animate-pulse text-purple-200" />
+                  <span>Thinking...</span>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </Card>
+      </div>
 
       {shouldShowPanel && (
-        <div className="mt-6">
-          <TokenCreationPanel 
-            tokenData={currentTokenData} 
+        <div className="mt-8">
+          <TokenCreationPanel
+            tokenData={currentTokenData}
             onTokenDataChange={handleTokenDataChange}
           />
         </div>
       )}
+
+      <form
+        className="flex items-center space-x-2 mt-6"
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSendMessage();
+        }}
+      >
+        <Input
+          className="flex-1 bg-black/30 border-purple-500/30 text-white"
+          placeholder="e.g., Create a token named Phantom (PHM) with 300 million supply on devnet"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          disabled={isTyping}
+        />
+        <Button
+          type="submit"
+          className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white"
+          disabled={isTyping || !inputValue.trim()}
+        >
+          <Send className="w-4 h-4 mr-1" />
+          Send
+        </Button>
+      </form>
     </div>
   );
 };
