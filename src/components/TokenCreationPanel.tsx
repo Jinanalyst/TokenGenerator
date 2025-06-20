@@ -780,25 +780,7 @@ const TokenCreationPanel: React.FC<TokenCreationPanelProps> = ({
               <p className="text-green-100 font-mono text-sm break-all">{tokenResult.mintAddress}</p>
             </div>
 
-<<<<<<< HEAD
-            {/* Metadata Upload Issue */}
-            {!tokenResult.metadataUri && (
-              <div className="bg-yellow-500/10 rounded-lg p-4 border border-yellow-500/30">
-                <div className="flex items-center space-x-2 mb-2">
-                  <AlertTriangle className="w-4 h-4 text-yellow-400" />
-                  <span className="text-yellow-300 font-semibold">Metadata Upload Issue</span>
-                </div>
-                <p className="text-yellow-200 text-sm">
-                  Your token was created successfully, but the custom metadata (name, symbol, logo) couldn't be uploaded to IPFS.
-                  Your token is fully functional but may not show custom details in wallets immediately.
-                </p>
-              </div>
-            )}
-
-            {/* Metadata URI display */}
-=======
             {/* Enhanced Metadata URI display */}
->>>>>>> 69bbe474dfd238145cf45357d766ad23ef3f793f
             {tokenResult.metadataUri && (
               <div className="bg-purple-500/10 rounded-lg p-4 border border-purple-500/30">
                 <div className="flex items-center justify-between mb-2">
