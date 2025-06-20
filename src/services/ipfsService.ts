@@ -36,43 +36,63 @@ export class IPFSService {
     // Set the current space
     await client.setCurrentSpace(this.SPACE_DID);
 
-    // Prepare the metadata object (image will be ipfs://<cid>/logo.png after upload)
-    const metadata: SolanaTokenMetadata = {
-      name: name.trim(),
-      symbol: symbol.trim().toUpperCase(),
-      description: description.trim(),
-      image: 'ipfs://PLACEHOLDER/logo.png', // Will be replaced after upload
-      external_url: 'https://github.com/Jinanalyst/TokenGenerator',
-      attributes: [
-        { trait_type: 'Created By', value: 'Jinanalyst' }
-      ]
-    };
+    let lastCid = '';
+    let attempt = 0;
+    let finalCid = '';
+    let metadataWithImage;
+    let metadataFile;
+    let files;
+    let metadata;
+    while (attempt < 3) {
+      // Prepare the metadata object (image will be ipfs://<cid>/logo.png after upload)
+      metadata = {
+        name: name.trim(),
+        symbol: symbol.trim().toUpperCase(),
+        description: description.trim(),
+        image: 'ipfs://PLACEHOLDER/logo.png', // Will be replaced after upload
+        external_url: 'https://github.com/Jinanalyst/TokenGenerator',
+        attributes: [
+          { trait_type: 'Created By', value: 'Jinanalyst' }
+        ],
+        created_at: new Date().toISOString() // Ensure uniqueness
+      };
 
-    // Prepare files for upload
-    const files = [
-      new File([imageFile], 'logo.png', { type: imageFile.type }),
-      new File([JSON.stringify(metadata, null, 2)], 'metadata.json', { type: 'application/json' })
-    ];
+      // Prepare files for upload
+      files = [
+        new File([imageFile], 'logo.png', { type: imageFile.type }),
+        new File([JSON.stringify(metadata, null, 2)], 'metadata.json', { type: 'application/json' })
+      ];
 
-    // Upload directory to Web3.Storage
-    const cid = await client.uploadDirectory(files);
+      // Upload directory to Web3.Storage
+      const cidObj = await client.uploadDirectory(files);
+      const cid = cidObj.toString();
+      console.log(`[IPFS] Attempt ${attempt + 1}: Uploaded initial files, CID:`, cid);
 
-    // Update metadata with the correct image URI
-    const metadataWithImage = {
-      ...metadata,
-      image: `ipfs://${cid}/logo.png`
-    };
-    const metadataFile = new File([
-      JSON.stringify(metadataWithImage, null, 2)
-    ], 'metadata.json', { type: 'application/json' });
+      // Update metadata with the correct image URI
+      metadataWithImage = {
+        ...metadata,
+        image: `ipfs://${cid}/logo.png`
+      };
+      metadataFile = new File([
+        JSON.stringify(metadataWithImage, null, 2)
+      ], 'metadata.json', { type: 'application/json' });
 
-    // Re-upload metadata.json with correct image URI
-    const finalCid = await client.uploadDirectory([
-      new File([imageFile], 'logo.png', { type: imageFile.type }),
-      metadataFile
-    ]);
+      // Re-upload metadata.json with correct image URI
+      const finalCidObj = await client.uploadDirectory([
+        new File([imageFile], 'logo.png', { type: imageFile.type }),
+        metadataFile
+      ]);
+      const finalCid = finalCidObj.toString();
+      console.log(`[IPFS] Attempt ${attempt + 1}: Uploaded final files, CID:`, finalCid);
 
-    // Return the metadata URI
-    return `ipfs://${finalCid}/metadata.json`;
+      if (finalCid !== lastCid) {
+        break;
+      }
+      attempt++;
+      lastCid = finalCid;
+    }
+
+    // Return the metadata URI with cache-busting query
+    return `ipfs://${finalCid}/metadata.json?cb=${Date.now()}`;
   }
 }
