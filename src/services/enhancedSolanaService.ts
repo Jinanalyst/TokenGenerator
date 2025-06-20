@@ -56,10 +56,10 @@ export class EnhancedSolanaService {
   private static readonly MAINNET_RPC = 'https://solana-mainnet.g.alchemy.com/v2/IrmhofdwFpA4ABFafBa4g';
   private static readonly DEVNET_RPC = 'https://api.devnet.solana.com';
 
-  constructor(network: 'mainnet' | 'devnet') {
+  constructor(network: 'mainnet' | 'devnet', wallet?: any) {
     this.network = network;
     this.initializeConnection();
-    this.metaplexService = new MetaplexService(this.connection);
+    this.metaplexService = new MetaplexService(this.connection, wallet);
   }
 
   private initializeConnection() {
@@ -79,6 +79,10 @@ export class EnhancedSolanaService {
         }
       }
     );
+  }
+
+  setWallet(wallet: any) {
+    this.metaplexService.setWallet(wallet);
   }
 
   async checkConnection(): Promise<boolean> {
@@ -390,6 +394,7 @@ export class EnhancedSolanaService {
     if (metadata.imageBlob) {
       try {
         console.log('Adding metadata to token...');
+        this.metaplexService.setWallet(wallet); // Ensure wallet is set in Metaplex service
         const walletPublicKey = wallet.publicKey || wallet.adapter?.publicKey;
         const publicKey = typeof walletPublicKey === 'string' 
           ? new PublicKey(walletPublicKey) 
@@ -410,53 +415,43 @@ export class EnhancedSolanaService {
         metadataResult.transaction.recentBlockhash = blockhash;
         metadataResult.transaction.feePayer = publicKey;
         
-        // Simulate metadata transaction
-        try {
-          const simulation = await this.connection.simulateTransaction(metadataResult.transaction);
-          if (simulation.value.err) {
-            throw new Error(`Metadata transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
-          }
-          console.log('Metadata transaction simulation successful');
-        } catch (error) {
-          console.warn('Metadata transaction simulation failed:', error);
-          // Continue anyway as the token was created successfully
-        }
-        
         // Sign and send metadata transaction
         const signTransaction = wallet.signTransaction || wallet.adapter?.signTransaction;
-        if (signTransaction) {
-          try {
-            const signedMetadataTransaction = await signTransaction(metadataResult.transaction);
-            const metadataSignature = await this.connection.sendRawTransaction(
-              signedMetadataTransaction.serialize(),
-              { 
-                skipPreflight: false, 
-                preflightCommitment: 'confirmed',
-                maxRetries: 3
-              }
-            );
-            
-            console.log(`Metadata transaction sent: ${metadataSignature}`);
-            
-            // Confirm metadata transaction
-            await this.connection.confirmTransaction({
-              signature: metadataSignature,
-              blockhash,
-              lastValidBlockHeight
-            }, 'confirmed');
-            
-            console.log('Metadata transaction confirmed successfully');
-          } catch (error) {
-            console.warn('Metadata transaction failed:', error);
-            // Don't throw error as the token was created successfully
-          }
+        if (!signTransaction) {
+          throw new Error('Wallet signing method not available for metadata transaction');
         }
+
+        const signedMetadataTransaction = await signTransaction(metadataResult.transaction);
+        const metadataSignature = await this.connection.sendRawTransaction(
+          signedMetadataTransaction.serialize(),
+          { 
+            skipPreflight: true, // Skip preflight to avoid simulation errors with new metadata accounts
+            preflightCommitment: 'confirmed',
+            maxRetries: 3
+          }
+        );
+        
+        console.log(`Metadata transaction sent: ${metadataSignature}`);
+        
+        // Confirm metadata transaction
+        const confirmation = await this.connection.confirmTransaction({
+          signature: metadataSignature,
+          blockhash,
+          lastValidBlockHeight
+        }, 'confirmed');
+
+        if (confirmation.value.err) {
+          console.error('Metadata transaction confirmation failed:', confirmation.value.err);
+          throw new Error(`Metadata transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+        }
+        
+        console.log('Metadata transaction confirmed successfully');
         
         result.metadataUri = metadataResult.metadataUri;
         console.log('Metadata added successfully:', metadataResult.metadataUri);
       } catch (error) {
-        console.warn('Metadata upload failed, but token was created:', error);
-        // Don't throw error here as the token was created successfully
+        console.error('Metadata upload failed, but token was created:', error);
+        // Do not re-throw error, allow token creation to be reported as success
       }
     }
     

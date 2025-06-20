@@ -2,20 +2,27 @@ import { useState, useEffect } from 'react';
 import { EnhancedSolanaService } from '../services/enhancedSolanaService';
 import { TokenMetadata } from '../services/solanaService';
 import { Keypair } from '@solana/web3.js';
+import { useWallet } from '@solana/wallet-adapter-react';
 
 export const useEnhancedSolana = (network: 'mainnet' | 'devnet' = 'devnet') => {
+  const wallet = useWallet();
   const [service, setService] = useState<EnhancedSolanaService>(
-    new EnhancedSolanaService(network)
+    new EnhancedSolanaService(network, wallet)
   );
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const newService = new EnhancedSolanaService(network);
+    const newService = new EnhancedSolanaService(network, wallet);
     setService(newService);
-    checkConnection(newService);
-  }, [network]);
+    if (wallet.connected) {
+      newService.setWallet(wallet);
+      checkConnection(newService);
+    } else {
+      setIsConnected(false);
+    }
+  }, [network, wallet, wallet.connected]);
 
   const checkConnection = async (solanaService: EnhancedSolanaService) => {
     setIsLoading(true);
