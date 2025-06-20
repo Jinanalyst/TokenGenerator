@@ -190,13 +190,15 @@ const ChatInterface = () => {
       setCurrentTokenData(aiResponse.tokenData);
     }
     if (aiResponse.showPanel) {
+      console.log("Setting shouldShowPanel to true", aiResponse);
       setShouldShowPanel(true);
     }
   };
 
   return (
     <div className="container mx-auto px-4 max-w-4xl">
-      <div className="mb-4">
+      {/* Chat interface always at the top */}
+      <div className="mb-4 mt-8">
         <WalletSelector />
       </div>
 
@@ -242,15 +244,6 @@ const ChatInterface = () => {
         </Card>
       </div>
 
-      {shouldShowPanel && (
-        <div className="mt-8">
-          <TokenCreationPanel
-            tokenData={currentTokenData}
-            onTokenDataChange={handleTokenDataChange}
-          />
-        </div>
-      )}
-
       <form
         className="flex items-center space-x-2 mt-6"
         onSubmit={(e) => {
@@ -274,6 +267,16 @@ const ChatInterface = () => {
           Send
         </Button>
       </form>
+
+      {/* Token Creation Panel appears below the chat after valid prompt */}
+      {shouldShowPanel && (
+        <div className="mt-8">
+          <TokenCreationPanel
+            tokenData={currentTokenData}
+            onTokenDataChange={handleTokenDataChange}
+          />
+        </div>
+      )}
     </div>
   );
 };
